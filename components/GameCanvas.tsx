@@ -2,29 +2,35 @@
 
 import { useEffect, useRef } from "react";
 import { canComplete, deriveWorldSnapshot, type IncidentId, type RobotId } from "@/lib/game-state";
+import { NPC_DIALOGUE_IDS } from "@/lib/npc-dialogue";
+import { STAGE_MAPS, type StageMapDefinition } from "@/lib/stage-maps";
 
 export type OperationPhase = "idle" | "analyzing" | "preview" | "fire" | "bridge" | "cat" | "generator" | "complete";
 
-type StageIncident = { properties: { incident_id: IncidentId; interaction_tile: [number, number]; marker_pixel: [number, number] } };
-type StageSpawnData = { runtimeHudOffsetY: number; actors: Array<{ id: RobotId; pixel: [number, number] }>; incidents: StageIncident[] };
+type StageSpawnData = { runtimeHudOffsetY: number };
 type CollisionData = { width: number; height: number; blocked: number[] };
 
 const ASSET = "/assets/pixel-panic";
 const ROBOTS: RobotId[] = ["aqua", "fix", "buddy"];
 const INCIDENTS: IncidentId[] = ["fire", "bridge", "cat", "generator"];
 
-export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { phase: OperationPhase; completedIncidents: readonly IncidentId[]; panX?: number; onError?: (message: string) => void }) {
+export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onError }: { phase: OperationPhase; completedIncidents: readonly IncidentId[]; stageMap: StageMapDefinition; panX?: number; onError?: (message: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const phaseRef = useRef(phase);
   const completedRef = useRef<readonly IncidentId[]>(completedIncidents);
+  const stageMapRef = useRef(stageMap);
   const errorRef = useRef(onError);
-  const sceneRef = useRef<{ setOperationState: (next: OperationPhase, completed: readonly IncidentId[]) => void } | null>(null);
+  const sceneRef = useRef<{ setOperationState: (next: OperationPhase, completed: readonly IncidentId[]) => void; setStageMap: (next: StageMapDefinition) => void } | null>(null);
 
   useEffect(() => {
     phaseRef.current = phase;
     completedRef.current = completedIncidents;
     sceneRef.current?.setOperationState(phase, completedIncidents);
   }, [phase, completedIncidents]);
+  useEffect(() => {
+    stageMapRef.current = stageMap;
+    sceneRef.current?.setStageMap(stageMap);
+  }, [stageMap]);
   useEffect(() => { errorRef.current = onError; }, [onError]);
 
   useEffect(() => {
@@ -57,15 +63,18 @@ export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { p
         private generator?: Phaser.GameObjects.Sprite;
         private planLines?: Phaser.GameObjects.Graphics;
         private collision?: CollisionData;
+        private baseCollision?: CollisionData;
         private hudOffsetY = 64;
         private currentPhase: OperationPhase = "idle";
         private completedSignature = "";
+        private stageBackground?: Phaser.GameObjects.Image;
+        private activeMap: StageMapDefinition = stageMapRef.current;
 
         constructor() { super("rescue"); }
 
         preload() {
           this.load.on("loaderror", (file: { key?: string }) => errorRef.current?.(`에셋 ${file.key ?? "unknown"} 로딩에 실패했습니다.`));
-          this.load.image("stage", `${ASSET}/world/maps/pp_stage_01_preview.webp`);
+          for (const map of STAGE_MAPS) this.load.image(`stage-${map.id}`, `${ASSET}/world/maps/${map.file}`);
           this.load.json("stage-data", `${ASSET}/world/maps/pp_stage_01.json`);
           this.load.json("collision", `${ASSET}/world/maps/pp_stage_01_collision.json`);
           this.load.json("spawns", `${ASSET}/world/maps/pp_stage_01_spawn_points.json`);
@@ -105,18 +114,16 @@ export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { p
             errorRef.current?.("스테이지 데이터 검증에 실패했습니다.");
             return;
           }
-          this.collision = collision;
+          this.baseCollision = collision;
+          this.activeMap = stageMapRef.current;
+          this.collision = this.activeMap.layout === "classic" ? collision : undefined;
           this.hudOffsetY = spawnData.runtimeHudOffsetY;
 
-          this.add.image(0, 64, "stage").setOrigin(0);
+          this.stageBackground = this.add.image(0, 64, `stage-${this.activeMap.id}`).setOrigin(0);
           this.createAnimations();
-          const actorMap = new Map(spawnData.actors.map((actor) => [actor.id, actor]));
-          const incidentMap = new Map(spawnData.incidents.map((incident) => [incident.properties.incident_id, incident]));
 
           for (const robot of ROBOTS) {
-            const actor = actorMap.get(robot);
-            if (!actor) continue;
-            const start: [number, number] = [actor.pixel[0], actor.pixel[1] + spawnData.runtimeHudOffsetY];
+            const start: [number, number] = [...this.activeMap.robotStarts[robot]];
             this.starts.set(robot, start);
             const shadow = this.add.image(start[0], start[1] + 10, "shadow").setScale(2).setDepth(8).setAlpha(0.55);
             const sprite = this.add.sprite(start[0], start[1], `${robot}-idle`).setScale(2).setOrigin(0.5, 0.875).setDepth(10);
@@ -126,11 +133,8 @@ export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { p
           }
 
           for (const incident of INCIDENTS) {
-            const item = incidentMap.get(incident);
-            if (!item) continue;
-            const [tileX, tileY] = item.properties.interaction_tile;
-            this.targets.set(incident, [tileX * 32 + 16, tileY * 32 + 16 + spawnData.runtimeHudOffsetY]);
-            const position: [number, number] = [item.properties.marker_pixel[0], item.properties.marker_pixel[1] + spawnData.runtimeHudOffsetY];
+            const position: [number, number] = [...this.activeMap.legacyTargets[incident]];
+            this.targets.set(incident, position);
             this.markerTargets.set(incident, position);
             const marker = this.add.image(position[0], position[1], `marker-${incident}`).setScale(2).setDepth(15).setVisible(false);
             this.markers.set(incident, marker);
@@ -154,8 +158,11 @@ export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { p
           this.restore = this.add.sprite(generatorPoint[0], generatorPoint[1], "restore").setScale(2).setDepth(16).setVisible(false);
           this.confetti = this.add.sprite(640, 360, "confetti").setScale(4).setDepth(18).setVisible(false);
 
-          const npcPositions: [number, number][] = [[400, 360], [546, 250], [720, 450], [930, 430]];
-          this.residents = ["a", "b", "c", "d"].map((npc, index) => this.add.sprite(npcPositions[index][0], npcPositions[index][1], `npc-${npc}-idle`).setScale(2).setOrigin(0.5, 0.875).setDepth(9).play(`npc-${npc}-idle-anim`));
+          this.residents = ["a", "b", "c", "d"].map((npc, index) => {
+            const position = this.activeMap.npcPositions[NPC_DIALOGUE_IDS[index]];
+            return this.add.sprite(position[0], position[1], `npc-${npc}-idle`).setScale(2).setOrigin(0.5, 0.875).setDepth(9).play(`npc-${npc}-idle-anim`);
+          });
+          this.positionWorldElements();
           sceneRef.current = this;
           this.setOperationState(phaseRef.current, completedRef.current);
         }
@@ -176,6 +183,49 @@ export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { p
           add("steam-once", "steam", 7, 10, 0); add("spark-loop", "sparks", 5, 12); add("heart-once", "hearts", 5, 10, 0);
           add("electric-loop", "electricity", 5, 10); add("restore-once", "restore", 7, 12, 0); add("confetti-once", "confetti", 9, 12, 1);
           add("generator-on-anim", "generator-on", 3, 5);
+        }
+
+        setStageMap(next: StageMapDefinition) {
+          if (!this.stageBackground || !this.textures.exists(`stage-${next.id}`) || this.activeMap.id === next.id) return;
+          this.tweens.killTweensOf(this.stageBackground);
+          this.activeMap = next;
+          this.collision = next.layout === "classic" ? this.baseCollision : undefined;
+          this.stageBackground.setTexture(`stage-${next.id}`).setAlpha(0.42);
+          this.tweens.add({ targets: this.stageBackground, alpha: 1, duration: 260, ease: "Quad.easeOut" });
+          for (const robot of ROBOTS) this.starts.set(robot, [...next.robotStarts[robot]]);
+          for (const incident of INCIDENTS) {
+            const position: [number, number] = [...next.legacyTargets[incident]];
+            this.targets.set(incident, position);
+            this.markerTargets.set(incident, position);
+            this.markers.get(incident)?.setPosition(position[0], position[1]);
+          }
+          this.residents.forEach((resident, index) => resident.setPosition(...next.npcPositions[NPC_DIALOGUE_IDS[index]]));
+          this.positionWorldElements();
+          const phase = this.currentPhase;
+          this.currentPhase = "idle";
+          this.completedSignature = "";
+          this.resetActorsToBase();
+          this.setOperationState(phase, completedRef.current);
+        }
+
+        private positionWorldElements() {
+          const firePoint = this.activeMap.legacyTargets.fire;
+          const bridgePoint = this.activeMap.legacyTargets.bridge;
+          const catPoint = this.activeMap.legacyTargets.cat;
+          const generatorPoint = this.activeMap.legacyTargets.generator;
+          this.fire?.setPosition(firePoint[0] + 8, firePoint[1] + 30);
+          this.smoke?.setPosition(firePoint[0] + 14, firePoint[1] - 28);
+          this.water?.setPosition(firePoint[0] + 58, firePoint[1] + 22);
+          this.steam?.setPosition(firePoint[0] + 8, firePoint[1] + 18);
+          this.bridge?.setPosition(bridgePoint[0], bridgePoint[1] + 24);
+          this.sparks?.setPosition(bridgePoint[0], bridgePoint[1]);
+          this.cat?.setPosition(catPoint[0], catPoint[1] - 26);
+          this.hearts?.setPosition(catPoint[0], catPoint[1] - 58);
+          this.generator?.setPosition(generatorPoint[0], generatorPoint[1] + 20);
+          this.electricity?.setPosition(generatorPoint[0] + 22, generatorPoint[1] - 8);
+          this.restore?.setPosition(generatorPoint[0], generatorPoint[1]);
+          const starts = ROBOTS.map((robot) => this.activeMap.robotStarts[robot]);
+          this.confetti?.setPosition(starts.reduce((sum, point) => sum + point[0], 0) / starts.length, Math.max(150, starts[0][1] - 65));
         }
 
         private resetActorsToBase() {
@@ -206,8 +256,9 @@ export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { p
           this.fire?.setVisible(!snapshot.fireResolved).setAlpha(1).play("fire-loop", true);
           this.smoke?.setVisible(!snapshot.fireResolved).setAlpha(1).play("smoke-loop", true);
           this.water?.setVisible(false); this.steam?.setVisible(false); this.sparks?.setVisible(false); this.hearts?.setVisible(false); this.restore?.setVisible(false); this.confetti?.setVisible(false);
-          this.bridge?.setTexture(snapshot.bridgeResolved ? "bridge-repaired" : "bridge-broken");
+          this.bridge?.setVisible(this.activeMap.legacyStructureOverlays).setTexture(snapshot.bridgeResolved ? "bridge-repaired" : "bridge-broken");
           this.cat?.setVisible(!snapshot.catResolved).play("cat-idle-anim", true);
+          this.generator?.setVisible(this.activeMap.legacyStructureOverlays);
           if (snapshot.generatorResolved) this.generator?.setTexture("generator-on", 0).play("generator-on-anim", true);
           else this.generator?.stop().setTexture("generator-off");
           this.electricity?.setVisible(!snapshot.generatorResolved).play("electric-loop", true);
@@ -272,7 +323,10 @@ export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { p
           const shadow = this.shadows.get(robot);
           this.tweens.killTweensOf(sprite);
           sprite.play(`${robot}-walk-anim`, true);
-          const points = this.findWalkPath(sprite.x, sprite.y, target[0], target[1]);
+          const customRoute = this.activeMap.routes?.[incident];
+          const points: Array<[number, number]> = customRoute
+            ? customRoute.map(([x, y]) => [x, y])
+            : this.findWalkPath(sprite.x, sprite.y, target[0], target[1]);
           const distances = points.map((point, index) => {
             const from = index === 0 ? [sprite.x, sprite.y] : points[index - 1];
             return Math.hypot(point[0] - from[0], point[1] - from[1]);
@@ -322,7 +376,9 @@ export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { p
           if (next === "cat") this.moveRobot("buddy", "cat", 950, () => { this.cat?.play("cat-hop-anim", true); this.hearts?.setVisible(true).play("heart-once"); this.time.delayedCall(850, () => this.cat?.setVisible(false)); });
           if (next === "generator") this.moveRobot("fix", "generator", 1100, () => { this.restore?.setVisible(true).play("restore-once"); this.electricity?.setVisible(false); this.generator?.setTexture("generator-on", 0).play("generator-on-anim", true); });
           if (next === "complete") {
-            const positions: [number, number][] = [[555, 430], [640, 420], [725, 430]];
+            const positions: [number, number][] = this.activeMap.layout === "classic"
+              ? [[555, 430], [640, 420], [725, 430]]
+              : ROBOTS.map((robot) => [...this.activeMap.robotStarts[robot]]);
             ROBOTS.forEach((robot, index) => {
               const sprite = this.robots.get(robot);
               if (!sprite) return;
@@ -343,5 +399,5 @@ export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { p
     return () => { disposed = true; sceneRef.current = null; game?.destroy(true); };
   }, []);
 
-  return <div className="phaser-canvas" ref={containerRef} style={{ transform: `translate3d(${panX}px, 0, 0)` }} data-map-pan-x={panX} data-world-completed="" data-world-resolved-count="0" aria-label="도트 마을 구조 작전 애니메이션" role="img" />;
+  return <div className="phaser-canvas" ref={containerRef} style={{ transform: `translate3d(${panX}px, 0, 0)` }} data-map-pan-x={panX} data-stage-map={stageMap.id} data-world-completed="" data-world-resolved-count="0" aria-label="도트 마을 구조 작전 애니메이션" role="img" />;
 }

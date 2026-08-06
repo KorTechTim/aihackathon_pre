@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../config.js";
 import { requireBackendAuth } from "../middleware/backend-auth.js";
 import { IpRateLimiter } from "../middleware/rate-limit.js";
-import { DIALOGUE_SITUATIONS, type DialogueInput } from "../schemas/dialogue.js";
+import { DIALOGUE_SITUATIONS, NPC_DIALOGUE_SITUATIONS, type DialogueInput } from "../schemas/dialogue.js";
 import type { DialogueWriter } from "../services/openai-dialogue.js";
 
 const bodySchema = {
@@ -14,9 +14,14 @@ const bodySchema = {
     personality: { type: "string", minLength: 2, maxLength: 40 },
     situation: { type: "string", enum: [...DIALOGUE_SITUATIONS] },
     facts: { type: "object", additionalProperties: { anyOf: [{ type: "string", maxLength: 80 }, { type: "number" }, { type: "boolean" }] }, maxProperties: 12 },
-    choiceIds: { type: "array", minItems: 2, maxItems: 3, uniqueItems: true, items: { type: "string", minLength: 2, maxLength: 40 } },
+    choiceIds: { type: "array", minItems: 0, maxItems: 3, uniqueItems: true, items: { type: "string", minLength: 2, maxLength: 40 } },
     language: { type: "string", const: "ko" },
   },
+  allOf: [{
+    if: { properties: { situation: { enum: [...NPC_DIALOGUE_SITUATIONS] } }, required: ["situation"] },
+    then: { properties: { speaker: { const: "주민" }, choiceIds: { type: "array", maxItems: 0 } } },
+    else: { properties: { choiceIds: { type: "array", minItems: 2 } } },
+  }],
 } as const;
 
 export function registerDialogueRoute(app: FastifyInstance, options: { config: AppConfig; writer: DialogueWriter }) {

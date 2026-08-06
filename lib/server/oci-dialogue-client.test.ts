@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DIALOGUE_EVENTS } from "../dialogue-events";
+import { NPC_DIALOGUES } from "../npc-dialogue";
 import { handleDialogueProxyRequest } from "./oci-dialogue-client";
 
 const token = "test-only-shared-token-32-bytes-minimum";
@@ -11,6 +12,14 @@ const body = {
   situation: "hydrant_broken",
   facts: { spreadSeconds: 12 },
   choiceIds: ["use_reserve_water", "protect_nearby_house"],
+  language: "ko",
+} as const;
+const npcBody = {
+  speaker: "주민",
+  personality: "observant_keeper_optimistic",
+  situation: "npc_duri",
+  facts: { npcName: "두리", npcRole: "공원 관리인", characterTraits: "지형 변화를 빠르게 발견함", wave: 2 },
+  choiceIds: [],
   language: "ko",
 } as const;
 
@@ -32,6 +41,16 @@ test("OCI 설정 누락과 잘못된 응답은 정적 대사로 폴백한다", a
   assert.deepEqual(await missing.json(), { dialogue: DIALOGUE_EVENTS.hydrant_broken.fallbackDialogue, source: "fallback", degradedReason: "OCI_NOT_CONFIGURED", requestId: "missing" });
   const invalid = await handleDialogueProxyRequest(request(), { config, fetchImpl: async () => Response.json({ dialogue: "**마크다운**", source: "openai" }) });
   assert.equal((await invalid.json()).source, "fallback");
+});
+
+test("NPC 대화는 선택지 없이 허용하고 캐릭터별 폴백을 사용한다", async () => {
+  const response = await handleDialogueProxyRequest(request(npcBody), { config: { timeoutMs: 50 }, createRequestId: () => "npc-fallback" });
+  assert.deepEqual(await response.json(), {
+    dialogue: NPC_DIALOGUES.npc_duri.fallbackDialogue,
+    source: "fallback",
+    degradedReason: "OCI_NOT_CONFIGURED",
+    requestId: "npc-fallback",
+  });
 });
 
 test("잘못된 요청은 OCI 호출 전 400으로 거부한다", async () => {

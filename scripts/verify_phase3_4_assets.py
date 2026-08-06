@@ -97,7 +97,7 @@ def main() -> None:
         "다시 시도",
         "incident-row",
         "robot-card",
-        "action-buttons",
+        "action-popup-buttons",
         'fetch("/api/dialogue"',
     ):
         if required not in page: failures.append(f"UI integration missing: {required}")

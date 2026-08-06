@@ -14,6 +14,14 @@ WORLD = ROOT / "frontend/public/assets/pixel-panic/world"
 
 EXPECTED: dict[str, tuple[int, int]] = {
     "maps/pp_stage_01_preview.webp": (1280, 544),
+    "maps/pp_stage_02_rain.webp": (1280, 544),
+    "maps/pp_stage_03_night.webp": (1280, 544),
+    "maps/pp_stage_04_autumn.webp": (1280, 544),
+    "maps/pp_stage_05_winter.webp": (1280, 544),
+    "maps/pp_stage_06_harbor.webp": (1280, 544),
+    "maps/pp_stage_07_highland.webp": (1280, 544),
+    "maps/pp_stage_08_canals.webp": (1280, 544),
+    "maps/pp_stage_09_railway.webp": (1280, 544),
     "tilesets/pp_world_tileset_terrain_core.png": (256, 256),
     "tilesets/pp_world_tile_water_loop.png": (64, 16),
     "tilesets/pp_world_tile_flower_sway.png": (64, 16),
@@ -122,7 +130,7 @@ def main() -> None:
     game_code = (ROOT / "components/GameCanvas.tsx").read_text(encoding="utf-8")
     for legacy in ("pp_placeholder_map", "pp_placeholder_incident_fire", "pp_placeholder_incident_bridge", "pp_placeholder_incident_cat", "pp_placeholder_incident_generator"):
         if legacy in game_code: failures.append(f"PLACEHOLDER reference remains: {legacy}")
-    for current in ("pp_stage_01_preview", "pp_stage_01_spawn_points", "pp_stage_01_collision", "pp_world_incident_marker_"):
+    for current in ("STAGE_MAPS", "pp_stage_01_spawn_points", "pp_stage_01_collision", "pp_world_incident_marker_"):
         if current not in game_code: failures.append(f"INTEGRATION reference missing: {current}")
 
     # Seam test for the repeatable base grass tile.

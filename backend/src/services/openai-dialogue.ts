@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { AppConfig } from "../config.js";
-import { dialogueJsonSchema, fallbackDialogue, normalizeDialogue, type DialogueInput, type DialogueResult } from "../schemas/dialogue.js";
+import { dialogueJsonSchema, fallbackDialogue, isNpcDialogueSituation, normalizeDialogue, type DialogueInput, type DialogueResult } from "../schemas/dialogue.js";
 
 export interface DialogueWriter {
   write(input: DialogueInput): Promise<DialogueResult>;
@@ -15,17 +15,24 @@ export function createOpenAIDialogueWriter(config: AppConfig, injectedClient?: O
   return {
     async write(input: DialogueInput): Promise<DialogueResult> {
       try {
+        const npcDialogue = isNpcDialogueSituation(input.situation);
         const response = await client.responses.create({
           model: config.openaiModel,
           store: false,
           reasoning: { effort: "low" },
           max_output_tokens: 220,
-          instructions: [
+          instructions: (npcDialogue ? [
+            "당신은 한국어 픽셀 구조 게임 PIXEL PANIC의 주민 캐릭터 대사 작가입니다.",
+            "입력의 npcName, npcRole, characterTraits를 지키고 현재 재난 사실에 자연스럽게 반응하는 1~2문장을 작성하세요.",
+            "캐릭터의 말투와 관찰 내용은 살리되 새로운 사고, 임무, 보상, 규칙 또는 선택지를 만들지 마세요.",
+            "자기소개를 반복하지 말고 플레이어에게 직접 말하듯 작성하세요.",
+            "마크다운 없이 120자 이하의 dialogue 문자열만 반환하세요.",
+          ] : [
             "당신은 한국어 픽셀 구조 게임 PIXEL PANIC의 현장 대사 작가입니다.",
             "주어진 사실만 사용해 화자의 성격이 드러나는 1~3문장 대사를 작성하세요.",
             "게임 규칙, 선택지, 결과를 만들거나 변경하지 마세요.",
             "마크다운 없이 160자 이하의 dialogue 문자열만 반환하세요.",
-          ].join("\n"),
+          ]).join("\n"),
           input: JSON.stringify(input),
           text: { format: { type: "json_schema", name: "pixel_panic_dialogue", strict: true, schema: dialogueJsonSchema } },
         });

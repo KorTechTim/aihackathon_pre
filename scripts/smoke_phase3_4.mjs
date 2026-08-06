@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { collectPageErrors } from "./qa_helpers.mjs";
+import { collectPageErrors, fulfillDialogue } from "./qa_helpers.mjs";
 
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3000";
 const browser = await chromium.launch({ headless: true });
@@ -10,28 +10,52 @@ await titlePage.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
 await titlePage.getByRole("button", { name: "구조 작전 시작" }).waitFor();
 await titlePage.waitForFunction(() => window.__PIXEL_PANIC_DEBUG__?.audio().requestedTrack === "title");
 await titlePage.getByRole("button", { name: "플레이 방법" }).click();
+assert.equal(await titlePage.getByRole("button", { name: "닫기" }).count(), 0);
 await titlePage.waitForFunction(() => {
   const audio = window.__PIXEL_PANIC_DEBUG__?.audio();
   return audio?.activeTrack === "title" && audio.musicPlaying;
 });
+await titlePage.getByRole("button", { name: "확인" }).click();
+await titlePage.getByRole("button", { name: "구조 작전 시작" }).waitFor();
+assert.equal(await titlePage.locator(".game-screen").count(), 0);
 await titlePage.close();
 
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = collectPageErrors(page);
+await page.route("**/api/dialogue", (route) => fulfillDialogue(route, "openai"));
 await page.goto(`${baseUrl}/?screen=play&skipBriefing=1`, { waitUntil: "networkidle" });
 await page.locator("canvas").waitFor({ state: "visible" });
 await page.getByText("CLICK RESCUE OPS").waitFor();
 assert.equal(await page.locator("input, textarea").count(), 0);
+assert.equal(await page.locator(".game-screen").getAttribute("data-stage-map"), "day");
+assert.equal(await page.locator(".mission-flow, .score-box").count(), 0);
+const operationDock = await page.locator(".operation-dock").boundingBox();
+assert.equal(Boolean(operationDock && operationDock.width <= 430 && operationDock.height <= 88), true);
+const incidentRects = await page.locator(".incident-pin").evaluateAll((pins) => pins.map((pin) => {
+  const rect = pin.getBoundingClientRect();
+  return { id: pin.getAttribute("data-incident-id"), left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+}));
+for (let index = 0; index < incidentRects.length; index += 1) {
+  for (let other = index + 1; other < incidentRects.length; other += 1) {
+    const first = incidentRects[index];
+    const second = incidentRects[other];
+    const overlap = first.left < second.right && first.right > second.left && first.top < second.bottom && first.bottom > second.top;
+    assert.equal(overlap, false, `${first.id} and ${second.id} incident cards overlap`);
+  }
+}
+assert.equal(await page.locator('[data-incident-id="bakery_fire"]').evaluate((pin) => getComputedStyle(pin, "::after").content), '\"\"');
 
 const dragSurface = page.locator(".map-drag-surface");
 const dragBox = await dragSurface.boundingBox();
 assert.equal(Boolean(dragBox), true);
 assert.equal(await dragSurface.evaluate((element) => getComputedStyle(element).cursor), "grab");
+const initialPanX = Number(await dragSurface.getAttribute("data-map-pan-x"));
+assert.equal(initialPanX, -208);
 const dragStart = { x: dragBox.x + dragBox.width / 2, y: dragBox.y + dragBox.height / 2 };
 await page.mouse.move(dragStart.x, dragStart.y);
 await page.mouse.down();
 await page.mouse.move(dragStart.x + 160, dragStart.y, { steps: 5 });
-await page.waitForFunction(() => Number(document.querySelector(".map-drag-surface")?.getAttribute("data-map-pan-x")) >= 150);
+await page.waitForFunction((start) => Number(document.querySelector(".map-drag-surface")?.getAttribute("data-map-pan-x")) >= start + 150, initialPanX);
 assert.equal(await dragSurface.evaluate((element) => getComputedStyle(element).cursor), "grabbing");
 const draggedPanX = Number(await dragSurface.getAttribute("data-map-pan-x"));
 assert.equal(await page.locator(".phaser-canvas").getAttribute("data-map-pan-x"), String(draggedPanX));
@@ -40,12 +64,25 @@ await page.mouse.up();
 assert.equal(await dragSurface.evaluate((element) => getComputedStyle(element).cursor), "grab");
 await page.mouse.move(dragStart.x + 160, dragStart.y);
 await page.mouse.down();
-await page.mouse.move(dragStart.x + 160 - draggedPanX, dragStart.y, { steps: 5 });
+await page.mouse.move(dragStart.x, dragStart.y, { steps: 5 });
 await page.mouse.up();
-await page.waitForFunction(() => document.querySelector(".map-drag-surface")?.getAttribute("data-map-pan-x") === "0");
+await page.waitForFunction((start) => document.querySelector(".map-drag-surface")?.getAttribute("data-map-pan-x") === String(start), initialPanX);
 
-await page.getByRole("button", { name: /빵집 화재, 위험도/ }).click();
+await page.locator('[data-npc-id="npc_duri"]').click();
+await page.locator('[data-npc-speech="npc_duri"]').waitFor({ state: "visible" });
+await page.waitForFunction(() => document.querySelector('[data-npc-speech="npc_duri"]')?.getAttribute("data-dialogue-source") === "openai");
+assert.match(await page.locator('[data-npc-speech="npc_duri"] p').innerText(), /강물|산책로/);
+await page.getByRole("button", { name: "주민 말풍선 닫기" }).click();
+await page.locator('[data-npc-speech="npc_duri"]').waitFor({ state: "hidden" });
+
+await page.locator('[data-incident-row="bakery_fire"]').click();
 await page.getByRole("button", { name: /BUDDY 초상화/ }).click();
+await page.locator('[data-action-popup="buddy"]').waitFor({ state: "visible" });
+assert.equal(await page.locator(".action-panel").count(), 0);
+await page.getByRole("button", { name: "행동 선택 닫기" }).click();
+await page.locator('[data-action-popup="buddy"]').waitFor({ state: "hidden" });
+await page.getByRole("button", { name: /BUDDY 초상화/ }).click();
+await page.locator('[data-action-popup="buddy"]').waitFor({ state: "visible" });
 await page.getByRole("button", { name: /주민 대피 7초/ }).click();
 await page.getByRole("dialog").waitFor({ state: "visible" });
 const dialoguePosition = await page.evaluate(() => {
@@ -77,6 +114,14 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 1024, height: 576
 }
 await page.setViewportSize({ width: 390, height: 844 });
 await page.getByText("기기를 가로로 돌려주세요").waitFor();
+const waveThreePage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+await waveThreePage.goto(`${baseUrl}/?screen=play&skipBriefing=1&qaAll=1`, { waitUntil: "networkidle" });
+await waveThreePage.locator('.game-screen[data-stage-map="highland"]').waitFor();
+const highlandNpcPosition = await waveThreePage.locator('[data-npc-id="npc_boram"]').evaluate((node) => ({ left: node.style.left, top: node.style.top }));
+assert.deepEqual(highlandNpcPosition, { left: "725px", top: "193px" });
+const highlandIncidentPosition = await waveThreePage.locator('[data-incident-id="house_fire"]').evaluate((node) => ({ left: node.style.left, top: node.style.top }));
+assert.deepEqual(highlandIncidentPosition, { left: "985px", top: "445px" });
+await waveThreePage.close();
 assert.deepEqual([...titleErrors, ...errors], []);
 await browser.close();
-console.log("Responsive smoke PASSED: title/mission audio, map drag, click UI, Phaser, manifest, scaling");
+console.log("Responsive smoke PASSED: title/mission audio, 9 rotating maps with unique placements, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");

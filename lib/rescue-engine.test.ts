@@ -38,10 +38,23 @@ test("초기 상태는 고정 시드와 3분 30초 타이머를 사용한다", (
 });
 
 test("사고 핀 좌표는 실제 마을 시설 위치에 고정된다", () => {
-  assert.deepEqual(INCIDENTS.bakery_fire.mapPosition, [318, 220]);
-  assert.deepEqual(INCIDENTS.cat_trapped.mapPosition, [496, 142]);
-  assert.deepEqual(INCIDENTS.power_flood.mapPosition, [946, 188]);
-  assert.deepEqual(INCIDENTS.bridge_damage.mapPosition, [848, 334]);
+  assert.deepEqual(INCIDENTS.electrical_short.mapPosition, [1144, 166]);
+  assert.deepEqual(INCIDENTS.bakery_fire.mapPosition, [300, 252]);
+  assert.deepEqual(INCIDENTS.gas_risk.mapPosition, [1210, 330]);
+  assert.deepEqual(INCIDENTS.cat_trapped.mapPosition, [496, 176]);
+  assert.deepEqual(INCIDENTS.power_flood.mapPosition, [1010, 240]);
+  assert.deepEqual(INCIDENTS.bridge_damage.mapPosition, [850, 350]);
+});
+
+test("동시에 표시되는 사고 카드의 시설 앵커는 서로 겹치지 않는다", () => {
+  for (let index = 0; index < INCIDENT_IDS.length; index += 1) {
+    for (let other = index + 1; other < INCIDENT_IDS.length; other += 1) {
+      const first = INCIDENTS[INCIDENT_IDS[index]].mapPosition;
+      const second = INCIDENTS[INCIDENT_IDS[other]].mapPosition;
+      const cardsOverlap = Math.abs(first[0] - second[0]) < 74 && Math.abs(first[1] - second[1]) < 61;
+      assert.equal(cardsOverlap, false, `${INCIDENT_IDS[index]} and ${INCIDENT_IDS[other]} overlap`);
+    }
+  }
 });
 
 test("선행 전력 차단은 합선 확산과 후속 화재 활성화를 막는다", () => {

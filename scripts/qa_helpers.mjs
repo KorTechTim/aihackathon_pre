@@ -15,6 +15,10 @@ export async function fulfillDialogue(route, source = "fallback") {
     high_water_bridge: "수위와 교각을 확인했습니다. 안전 순서를 선택해주세요.",
     bakery_gas_info: "오븐 옆 예비 가스통 위치를 꼭 FIX에게 알려주세요.",
     buddy_priority: "부품 운반과 주민 확인 중 먼저 할 임무를 정해주세요.",
+    npc_boram: "이웃들이 안전한 길로 가도록 제가 앞에서 알려줄게요!",
+    npc_minsu: "젖은 전력선은 위험합니다. 반짝이는 설비에서 물러나 주세요.",
+    npc_hana: "천천히 이동하세요. 뒤처진 주민은 제가 끝까지 살펴볼게요.",
+    npc_duri: "강물 흐름을 계속 보고 있어요. 북쪽 산책로는 아직 안전해요!",
   }[request.situation] ?? "현장 상황을 확인했습니다.";
   await route.fulfill({
     status: 200,
@@ -27,8 +31,10 @@ export async function waitForDebug(page, predicate, argument, timeout = 8_000) {
   await page.waitForFunction(predicate, argument, { timeout });
 }
 
-export async function performAction(page, { incidentName, incidentId, robot, actionName, actionId, dialogueChoice }) {
-  await page.getByRole("button", { name: new RegExp(`^${incidentName}, 위험도`) }).click();
+export async function performAction(page, { incidentId, robot, actionName, actionId, dialogueChoice }) {
+  const incidentRow = page.locator(`[data-incident-row="${incidentId}"]`);
+  await incidentRow.click();
+  await page.locator(`[data-incident-id="${incidentId}"]`).waitFor({ state: "visible" });
   await page.getByRole("button", { name: new RegExp(`${robot} 초상화 ${robot}`) }).click();
   await page.getByRole("button", { name: new RegExp(`^${actionName}`) }).click();
   if (dialogueChoice) await page.getByRole("button", { name: dialogueChoice }).click();

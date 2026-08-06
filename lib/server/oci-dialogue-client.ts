@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { DIALOGUE_EVENTS, DIALOGUE_EVENT_IDS, type DialogueEventId } from "../dialogue-events";
+import { NPC_DIALOGUES, NPC_DIALOGUE_IDS, type NpcDialogueId } from "../npc-dialogue";
 import { extractVercelClientIp, type OciProxyConfig } from "./oci-plan-client";
+
+type DialogueSituation = DialogueEventId | NpcDialogueId;
 
 type DialogueProxyRequest = {
   speaker: "AQUA" | "FIX" | "BUDDY" | "주민";
   personality: string;
-  situation: DialogueEventId;
+  situation: DialogueSituation;
   facts: Record<string, string | number | boolean>;
   choiceIds: string[];
   language: "ko";
@@ -22,11 +25,14 @@ type DialogueProxyOptions = {
   config: OciProxyConfig;
   fetchImpl?: typeof fetch;
   createRequestId?: () => string;
-  logger?: (record: { requestId: string; situation: DialogueEventId; source: "openai" | "fallback"; upstreamStatus: number | null }) => void;
+  logger?: (record: { requestId: string; situation: DialogueSituation; source: "openai" | "fallback"; upstreamStatus: number | null }) => void;
 };
 
-function fallback(situation: DialogueEventId, requestId: string, degradedReason: NonNullable<DialogueProxyResponse["degradedReason"]>): DialogueProxyResponse {
-  return { dialogue: DIALOGUE_EVENTS[situation].fallbackDialogue, source: "fallback", degradedReason, requestId };
+function fallback(situation: DialogueSituation, requestId: string, degradedReason: NonNullable<DialogueProxyResponse["degradedReason"]>): DialogueProxyResponse {
+  const dialogue = situation in NPC_DIALOGUES
+    ? NPC_DIALOGUES[situation as NpcDialogueId].fallbackDialogue
+    : DIALOGUE_EVENTS[situation as DialogueEventId].fallbackDialogue;
+  return { dialogue, source: "fallback", degradedReason, requestId };
 }
 
 function normalizeDialogue(value: unknown): string | null {
@@ -38,11 +44,17 @@ function normalizeDialogue(value: unknown): string | null {
 function isDialogueRequest(value: unknown): value is DialogueProxyRequest {
   if (!value || typeof value !== "object") return false;
   const input = value as Partial<DialogueProxyRequest>;
+  const npcSituation = NPC_DIALOGUE_IDS.includes(input.situation as NpcDialogueId);
+  const eventSituation = DIALOGUE_EVENT_IDS.includes(input.situation as DialogueEventId);
+  const validChoices = Array.isArray(input.choiceIds)
+    && (npcSituation ? input.choiceIds.length === 0 : input.choiceIds.length >= 2 && input.choiceIds.length <= 3)
+    && input.choiceIds.every((id) => typeof id === "string" && id.length >= 2 && id.length <= 40);
   return ["AQUA", "FIX", "BUDDY", "주민"].includes(input.speaker ?? "")
     && typeof input.personality === "string" && input.personality.length >= 2 && input.personality.length <= 40
-    && DIALOGUE_EVENT_IDS.includes(input.situation as DialogueEventId)
+    && (npcSituation || eventSituation)
+    && (!npcSituation || input.speaker === "주민")
     && Boolean(input.facts) && typeof input.facts === "object" && !Array.isArray(input.facts)
-    && Array.isArray(input.choiceIds) && input.choiceIds.length >= 2 && input.choiceIds.length <= 3 && input.choiceIds.every((id) => typeof id === "string" && id.length >= 2 && id.length <= 40)
+    && validChoices
     && input.language === "ko";
 }
 

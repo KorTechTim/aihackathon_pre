@@ -15,7 +15,7 @@
   },
   "totals": {
     "P0": 1083156,
-    "P1": 478169,
+    "P1": 2843505,
     "P2": 39408
   },
   "assets": [
@@ -1628,6 +1628,86 @@
       "height": 544,
       "bytes": 225554,
       "priority": "P0"
+    },
+    {
+      "key": "pp_stage_02_rain",
+      "type": "image",
+      "url": "world/maps/pp_stage_02_rain.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 544,
+      "bytes": 224094,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_stage_03_night",
+      "type": "image",
+      "url": "world/maps/pp_stage_03_night.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 544,
+      "bytes": 184334,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_stage_04_autumn",
+      "type": "image",
+      "url": "world/maps/pp_stage_04_autumn.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 544,
+      "bytes": 319330,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_stage_05_winter",
+      "type": "image",
+      "url": "world/maps/pp_stage_05_winter.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 544,
+      "bytes": 309884,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_stage_06_harbor",
+      "type": "image",
+      "url": "world/maps/pp_stage_06_harbor.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 544,
+      "bytes": 312256,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_stage_07_highland",
+      "type": "image",
+      "url": "world/maps/pp_stage_07_highland.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 544,
+      "bytes": 336330,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_stage_08_canals",
+      "type": "image",
+      "url": "world/maps/pp_stage_08_canals.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 544,
+      "bytes": 339046,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_stage_09_railway",
+      "type": "image",
+      "url": "world/maps/pp_stage_09_railway.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 544,
+      "bytes": 340062,
+      "priority": "P1"
     },
     {
       "key": "pp_world_prop_barrier",

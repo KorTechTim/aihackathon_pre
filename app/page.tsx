@@ -7,7 +7,9 @@ import { StageViewport } from "@/components/StageViewport";
 import { PixelPanicAudio, type PixelPanicSfx } from "@/lib/audio-engine";
 import { DIALOGUE_EVENTS, buildDialogueRequest, dialogueForAction, type DialogueEventDefinition } from "@/lib/dialogue-events";
 import { deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
-import { clampMapPanX, mapPanFromPointerDelta } from "@/lib/map-pan";
+import { clampMapPanX, mapPanFromPointerDelta, revealMapAnchor } from "@/lib/map-pan";
+import { NPC_DIALOGUES, NPC_DIALOGUE_IDS, buildNpcDialogueRequest, type NpcDialogueId } from "@/lib/npc-dialogue";
+import { getStageMap, type StageMapDefinition, type StageMapId, type StagePoint } from "@/lib/stage-maps";
 import {
   ACTIONS,
   INCIDENTS,
@@ -28,7 +30,10 @@ import {
   selectRobot,
   startAction,
   type ActionId,
+  type ActionDefinition,
   type IncidentId,
+  type IncidentDefinition,
+  type IncidentRuntime,
   type RescueGameState,
   type RobotId,
 } from "@/lib/rescue-engine";
@@ -40,6 +45,7 @@ type DialogueView = {
   source: "openai" | "fallback";
   pendingAction: { incidentId: IncidentId; actionId: ActionId };
 };
+type NpcSpeech = { npcId: NpcDialogueId; text: string; source: "openai" | "fallback"; loading: boolean };
 type MapDragState = { pointerId: number; startClientX: number; startOffset: number; renderedWidth: number };
 
 declare global {
@@ -49,6 +55,8 @@ declare global {
       completedIncidents: LegacyIncidentId[];
       worldSnapshot: ReturnType<typeof deriveWorldSnapshot>;
       game: RescueGameState;
+      stageMap: StageMapId;
+      npcSpeech: NpcSpeech | null;
       audio: () => ReturnType<PixelPanicAudio["getDebugState"]>;
     };
   }
@@ -97,9 +105,14 @@ export default function Home() {
   const [gameError, setGameError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [dialogue, setDialogue] = useState<DialogueView | null>(null);
+  const [npcSpeech, setNpcSpeech] = useState<NpcSpeech | null>(null);
+  const [actionPopupOpen, setActionPopupOpen] = useState(false);
+  const [mapRunIndex, setMapRunIndex] = useState(0);
   const [mapPanX, setMapPanX] = useState(0);
   const [mapDragging, setMapDragging] = useState(false);
   const dialogueAbortRef = useRef<AbortController | null>(null);
+  const npcDialogueAbortRef = useRef<AbortController | null>(null);
+  const npcSpeechTimerRef = useRef<number | null>(null);
   const mapDragRef = useRef<MapDragState | null>(null);
   const lastTickRef = useRef<number | null>(null);
   const resultTimerRef = useRef<number | null>(null);
@@ -108,6 +121,7 @@ export default function Home() {
   const previousResolvedRef = useRef(getResolvedCount(game));
   const previousComboRef = useRef(game.foundCombos.length);
   const previousStatusRef = useRef(game.status);
+  const stageMap = useMemo(() => getStageMap(mapRunIndex, game.wave), [game.wave, mapRunIndex]);
 
   const getAudio = useCallback(() => {
     audioRef.current ??= new PixelPanicAudio();
@@ -201,6 +215,12 @@ export default function Home() {
   }, [toast]);
 
   useEffect(() => {
+    if (screen !== "play" || !game.selectedIncidentId) return;
+    const anchorX = stageMap.incidentPositions[game.selectedIncidentId][0];
+    setMapPanX((current) => revealMapAnchor(current, anchorX));
+  }, [game.selectedIncidentId, screen, stageMap]);
+
+  useEffect(() => {
     if (screen !== "title" || !soundOn) return;
     const audio = getAudio();
     void audio.startTitleMusic();
@@ -249,20 +269,30 @@ export default function Home() {
       completedIncidents: visual.completed,
       worldSnapshot: deriveWorldSnapshot(visual.completed),
       game,
+      stageMap: stageMap.id,
+      npcSpeech,
       audio: () => audioRef.current?.getDebugState() ?? { enabled: soundOn, requestedTrack: null, activeTrack: null, musicPlaying: false, contextState: "uninitialized" },
     };
     return () => { delete window.__PIXEL_PANIC_DEBUG__; };
-  }, [game, soundOn, visual]);
+  }, [game, npcSpeech, soundOn, stageMap.id, visual]);
 
   useEffect(() => () => {
     dialogueAbortRef.current?.abort();
+    npcDialogueAbortRef.current?.abort();
+    npcDialogueAbortRef.current = null;
+    if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
     if (resultTimerRef.current !== null) window.clearTimeout(resultTimerRef.current);
     audioRef.current?.dispose();
   }, []);
 
   const startGame = useCallback(() => {
     dialogueAbortRef.current?.abort();
+    npcDialogueAbortRef.current?.abort();
+    npcDialogueAbortRef.current = null;
+    if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
     setDialogue(null);
+    setNpcSpeech(null);
+    setActionPopupOpen(false);
     setPaused(false);
     setGameError(null);
     setToast(null);
@@ -275,16 +305,21 @@ export default function Home() {
     previousComboRef.current = 0;
     previousStatusRef.current = "playing";
     setGame(initial);
+    if (game.status !== "playing") setMapRunIndex((current) => current + 1);
     setScreen("play");
     if (soundOn) {
       const audio = getAudio();
       audio.play("dispatch");
       void audio.startMusic();
     }
-  }, [getAudio, soundOn]);
+  }, [game.status, getAudio, soundOn]);
 
   const openDialogue = useCallback((definition: DialogueEventDefinition, incidentId: IncidentId, actionId: ActionId) => {
     playSound("dialogue");
+    npcDialogueAbortRef.current?.abort();
+    npcDialogueAbortRef.current = null;
+    if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
+    setNpcSpeech(null);
     dialogueAbortRef.current?.abort();
     const controller = new AbortController();
     dialogueAbortRef.current = controller;
@@ -303,18 +338,63 @@ export default function Home() {
     }).catch(() => undefined).finally(() => window.clearTimeout(timeout));
   }, [game, playSound]);
 
+  const talkToNpc = useCallback((npcId: NpcDialogueId) => {
+    if (paused || dialogue || showHelp) return;
+    const npc = NPC_DIALOGUES[npcId];
+    setActionPopupOpen(false);
+    playSound("dialogue");
+    npcDialogueAbortRef.current?.abort();
+    if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
+    const controller = new AbortController();
+    npcDialogueAbortRef.current = controller;
+    setNpcSpeech({ npcId, text: "", source: "fallback", loading: true });
+
+    const showSpeech = (text: string, source: "openai" | "fallback") => {
+      if (npcDialogueAbortRef.current !== controller) return;
+      setNpcSpeech({ npcId, text, source, loading: false });
+      npcSpeechTimerRef.current = window.setTimeout(() => {
+        setNpcSpeech((current) => current?.npcId === npcId ? null : current);
+      }, 7_000);
+    };
+    const timeout = window.setTimeout(() => controller.abort(), 5_200);
+    void fetch("/api/dialogue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildNpcDialogueRequest(npc, game)),
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) return showSpeech(npc.fallbackDialogue, "fallback");
+      const data = await response.json() as { dialogue?: unknown; source?: unknown };
+      if (typeof data.dialogue !== "string" || !data.dialogue.trim() || data.dialogue.length > 160 || data.source !== "openai" && data.source !== "fallback") {
+        return showSpeech(npc.fallbackDialogue, "fallback");
+      }
+      showSpeech(data.dialogue, data.source);
+    }).catch(() => showSpeech(npc.fallbackDialogue, "fallback")).finally(() => window.clearTimeout(timeout));
+  }, [dialogue, game, paused, playSound, showHelp]);
+
+  const closeNpcSpeech = useCallback(() => {
+    npcDialogueAbortRef.current?.abort();
+    npcDialogueAbortRef.current = null;
+    if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
+    setNpcSpeech(null);
+  }, []);
+
   const requestAction = useCallback((actionId: ActionId) => {
     const incidentId = game.selectedIncidentId;
     if (!incidentId) return setToast("먼저 지도에서 사고를 선택하세요.");
     const action = ACTIONS[actionId];
     const event = dialogueForAction(game, incidentId, actionId, action.robotId);
-    if (event) return openDialogue(event, incidentId, actionId);
+    if (event) {
+      setActionPopupOpen(false);
+      return openDialogue(event, incidentId, actionId);
+    }
     const result = startAction(game, incidentId, actionId);
     if (!result.ok) {
       playSound("failure");
       return setToast(result.error ?? "출동할 수 없습니다.");
     }
     playSound("dispatch");
+    setActionPopupOpen(false);
     setGame(result.state);
   }, [game, openDialogue, playSound]);
 
@@ -345,17 +425,21 @@ export default function Home() {
 
   const chooseIncident = useCallback((id: IncidentId) => {
     playSound("select");
+    setActionPopupOpen(false);
     setGame((current) => selectIncident(current, id));
   }, [playSound]);
 
   const chooseRobot = useCallback((id: RobotId) => {
     playSound("button");
+    closeNpcSpeech();
     setGame((current) => selectRobot(current, id));
-  }, [playSound]);
+    setActionPopupOpen(true);
+  }, [closeNpcSpeech, playSound]);
 
   const pauseGame = useCallback(() => {
     playSound("button");
     getAudio().stopMusic(true);
+    setActionPopupOpen(false);
     setPaused(true);
   }, [getAudio, playSound]);
 
@@ -367,6 +451,7 @@ export default function Home() {
 
   const openHelp = useCallback(() => {
     playSound("button");
+    setActionPopupOpen(false);
     setShowHelp(true);
   }, [playSound]);
 
@@ -374,6 +459,21 @@ export default function Home() {
     playSound("button");
     setShowHelp(false);
   }, [playSound]);
+
+  const confirmHelp = useCallback(() => {
+    playSound("button");
+    dialogueAbortRef.current?.abort();
+    npcDialogueAbortRef.current?.abort();
+    npcDialogueAbortRef.current = null;
+    if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
+    setDialogue(null);
+    setNpcSpeech(null);
+    setActionPopupOpen(false);
+    setPaused(false);
+    setShowHelp(false);
+    setScreen("title");
+    if (screen !== "title") getAudio().stopMusic();
+  }, [getAudio, playSound, screen]);
 
   const beginMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || paused || dialogue || showHelp) return;
@@ -419,7 +519,10 @@ export default function Home() {
           <GameScreen
             game={game}
             visual={visual}
+            stageMap={stageMap}
             mapPanX={mapPanX}
+            npcSpeech={npcSpeech}
+            actionPopupOpen={actionPopupOpen}
             paused={paused}
             soundOn={soundOn}
             gameError={gameError}
@@ -427,6 +530,9 @@ export default function Home() {
             onIncident={chooseIncident}
             onRobot={chooseRobot}
             onAction={requestAction}
+            onNpc={talkToNpc}
+            onCloseNpc={closeNpcSpeech}
+            onCloseActions={() => setActionPopupOpen(false)}
             onPause={pauseGame}
             onSound={toggleSound}
             onHelp={openHelp}
@@ -437,7 +543,7 @@ export default function Home() {
 
         {game.briefingMs > 0 && screen === "play" && <WaveBriefing wave={game.wave} />}
         {game.comboBanner && screen === "play" && <div className="combo-banner"><small>PERFECT COMBO</small><strong>{game.comboBanner}</strong><span>+150</span></div>}
-        {dialogue && screen === "play" && <DialogueModal view={dialogue} mapPanX={mapPanX} onChoose={chooseDialogue} />}
+        {dialogue && screen === "play" && <DialogueModal view={dialogue} incidentPosition={stageMap.incidentPositions[dialogue.pendingAction.incidentId]} mapPanX={mapPanX} onChoose={chooseDialogue} />}
         {screen === "play" && (
           <>
             <div
@@ -463,9 +569,9 @@ export default function Home() {
           </Modal>
         )}
         {showHelp && (
-          <Modal title="클릭 구조 매뉴얼" onClose={closeHelp}>
-            <ol className="how-to-list"><li><b>1</b><span>지도 빈 공간을 좌우로 드래그해 가려진 지역을 살펴봅니다.</span></li><li><b>2</b><span>지도나 왼쪽 목록에서 사고를 클릭합니다.</span></li><li><b>3</b><span>현장에 맞는 구조 로봇을 클릭합니다.</span></li><li><b>4</b><span>행동 순서를 조합해 콤보와 확산 차단을 노립니다.</span></li></ol>
-            <PixelButton onClick={() => { closeHelp(); if (screen !== "play") startGame(); }}>확인</PixelButton>
+          <Modal title="클릭 구조 매뉴얼" onClose={closeHelp} dismissible={false}>
+            <ol className="how-to-list"><li><b>1</b><span>지도 빈 공간을 좌우로 드래그해 가려진 지역을 살펴봅니다.</span></li><li><b>2</b><span>주민 머리 위 말풍선 아이콘을 클릭하면 AI 대화를 들을 수 있습니다.</span></li><li><b>3</b><span>지도나 왼쪽 목록에서 사고를 클릭합니다.</span></li><li><b>4</b><span>현장에 맞는 구조 로봇과 행동 순서를 조합합니다.</span></li></ol>
+            <PixelButton onClick={confirmHelp}>확인</PixelButton>
           </Modal>
         )}
       </StageViewport>
@@ -473,10 +579,13 @@ export default function Home() {
   );
 }
 
-function GameScreen({ game, visual, mapPanX, paused, soundOn, gameError, toast, onIncident, onRobot, onAction, onPause, onSound, onHelp, onGameError }: {
+function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpen, paused, soundOn, gameError, toast, onIncident, onRobot, onAction, onNpc, onCloseNpc, onCloseActions, onPause, onSound, onHelp, onGameError }: {
   game: RescueGameState;
   visual: { phase: OperationPhase; completed: LegacyIncidentId[] };
+  stageMap: StageMapDefinition;
   mapPanX: number;
+  npcSpeech: NpcSpeech | null;
+  actionPopupOpen: boolean;
   paused: boolean;
   soundOn: boolean;
   gameError: string | null;
@@ -484,6 +593,9 @@ function GameScreen({ game, visual, mapPanX, paused, soundOn, gameError, toast, 
   onIncident: (id: IncidentId) => void;
   onRobot: (id: RobotId) => void;
   onAction: (id: ActionId) => void;
+  onNpc: (id: NpcDialogueId) => void;
+  onCloseNpc: () => void;
+  onCloseActions: () => void;
   onPause: () => void;
   onSound: () => void;
   onHelp: () => void;
@@ -500,8 +612,8 @@ function GameScreen({ game, visual, mapPanX, paused, soundOn, gameError, toast, 
   const listIncidents = [...unresolvedVisible, ...visible.filter((incident) => ["resolved", "contained"].includes(game.incidents[incident.id].status))].slice(0, 6);
 
   return (
-    <section className="game-screen" aria-label="PIXEL PANIC 클릭 구조 작전" data-wave={game.wave} data-status={game.status} data-resolved={resolvedCount}>
-      <GameCanvas phase={visual.phase} completedIncidents={visual.completed} panX={mapPanX} onError={onGameError} />
+    <section className="game-screen" aria-label="PIXEL PANIC 클릭 구조 작전" data-wave={game.wave} data-stage-map={stageMap.id} data-status={game.status} data-resolved={resolvedCount}>
+      <GameCanvas phase={visual.phase} completedIncidents={visual.completed} stageMap={stageMap} panX={mapPanX} onError={onGameError} />
       <header className="top-hud pixel-panel">
         <div className="hud-brand"><img src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" /><span><strong>PIXEL PANIC</strong><small>CLICK RESCUE OPS</small></span></div>
         <HudStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} emphasized />
@@ -521,7 +633,7 @@ function GameScreen({ game, visual, mapPanX, paused, soundOn, gameError, toast, 
             const resolved = ["resolved", "contained"].includes(runtime.status);
             const active = game.selectedIncidentId === incident.id;
             return (
-              <button className={`incident-row ${active ? "active" : ""} ${resolved ? "is-resolved" : ""}`} key={incident.id} onClick={() => onIncident(incident.id)}>
+              <button className={`incident-row ${active ? "active" : ""} ${resolved ? "is-resolved" : ""}`} key={incident.id} data-incident-row={incident.id} onClick={() => onIncident(incident.id)}>
                 <img src={`${ASSET}/ui/icons/pp_ui_icon_incident_${incident.icon}.png`} alt="" />
                 <span><strong>{incident.label}</strong><small>{resolved ? "해결 완료" : runtime.status === "warning" ? "확산 경고" : `확산 ${Math.ceil(runtime.remainingSpreadMs / 1_000)}초`}</small><i><b style={{ width: `${Math.min(100, runtime.severity / incident.maxSeverity * 100)}%` }} /></i></span>
                 <em>{resolved ? "✓" : runtime.severity}</em>
@@ -538,7 +650,8 @@ function GameScreen({ game, visual, mapPanX, paused, soundOn, gameError, toast, 
             <button
               key={incident.id}
               className={`incident-pin ${runtime.status} ${game.selectedIncidentId === incident.id ? "selected" : ""}`}
-              style={{ left: incident.mapPosition[0], top: incident.mapPosition[1] }}
+              style={{ left: stageMap.incidentPositions[incident.id][0], top: stageMap.incidentPositions[incident.id][1] }}
+              data-incident-id={incident.id}
               onClick={() => onIncident(incident.id)}
               aria-label={`${incident.label}, 위험도 ${runtime.severity}`}
             >
@@ -547,6 +660,26 @@ function GameScreen({ game, visual, mapPanX, paused, soundOn, gameError, toast, 
           );
         })}
       </div>
+
+      <div className="npc-hotspots" style={{ transform: `translate3d(${mapPanX}px, 0, 0)` }} aria-label="대화 가능한 주민" data-map-pan-x={mapPanX}>
+        {NPC_DIALOGUE_IDS.map((npcId) => {
+          const npc = NPC_DIALOGUES[npcId];
+          return (
+            <button
+              key={npcId}
+              className={`npc-hotspot ${npcSpeech?.npcId === npcId ? "is-speaking" : ""}`}
+              style={{ left: stageMap.npcPositions[npcId][0], top: stageMap.npcPositions[npcId][1] - 62 }}
+              data-npc-id={npcId}
+              onClick={() => onNpc(npcId)}
+              aria-label={`${npc.name}에게 말 걸기, ${npc.role}`}
+              title={`${npc.name} · ${npc.role}`}
+            >
+              <span aria-hidden="true">···</span>
+            </button>
+          );
+        })}
+      </div>
+      {npcSpeech && <NpcSpeechBubble speech={npcSpeech} npcPosition={stageMap.npcPositions[npcSpeech.npcId]} mapPanX={mapPanX} onClose={onCloseNpc} />}
 
       <aside className="robot-panel pixel-panel" aria-label="구조 로봇 선택">
         <div className="panel-heading"><span>2 · 로봇 선택</span><small>3 ONLINE</small></div>
@@ -566,24 +699,21 @@ function GameScreen({ game, visual, mapPanX, paused, soundOn, gameError, toast, 
         })}
       </aside>
 
-      <aside className="action-panel pixel-command" aria-label="행동 선택">
-        <div className="panel-heading"><span>3 · 행동 선택</span><small>{selectedRobot ? ROBOT_META[selectedRobot].name : "ROBOT?"}</small></div>
-        {selected && selectedRuntime ? (
-          <>
-            <div className="incident-detail"><span className={`severity severity-${selectedRuntime.severity}`}>위험 {selectedRuntime.severity}</span><strong>{selected.label}</strong><small>해결 진행 {selectedProgress}% · 연결 {selected.spreadsTo.length ? selected.spreadsTo.map((id) => INCIDENTS[id].shortLabel).join(" → ") : "없음"}</small><small>{selectedRuntime.status === "warning" ? "확산 전 선행 조치 가능" : `다음 확산까지 ${Math.ceil(selectedRuntime.remainingSpreadMs / 1_000)}초`}</small></div>
-            {!selectedRobot && <p className="action-guide">위에서 출동할 로봇을 클릭하세요.</p>}
-            <div className="action-buttons">
-              {actions.map((action) => <button key={action.id} disabled={game.robots[action.robotId].status !== "idle"} onClick={() => onAction(action.id)}><span>{action.label}</span><small>{Math.ceil(action.durationMs / 1_000)}초 · {action.description}</small></button>)}
-              {selectedRobot && actions.length === 0 && <p className="action-guide">이 로봇의 가능한 행동이 없습니다.</p>}
-            </div>
-          </>
-        ) : <p className="action-guide">지도에서 사고를 선택하세요.</p>}
-      </aside>
+      {actionPopupOpen && selected && selectedRuntime && selectedRobot && (
+        <ActionPopup
+          incident={selected}
+          runtime={selectedRuntime}
+          progress={selectedProgress}
+          robotId={selectedRobot}
+          actions={actions}
+          robotBusy={game.robots[selectedRobot].status !== "idle"}
+          onAction={onAction}
+          onClose={onCloseActions}
+        />
+      )}
 
       <footer className="operation-dock pixel-command">
         <section className="mission-log"><strong>작전 로그</strong>{game.logs.slice(-3).map((log) => <span className={log.tone} key={log.id}>› {log.message}</span>)}</section>
-        <section className="mission-flow"><span className={selected ? "done" : "active"}><b>1</b>{selected?.shortLabel ?? "사고 선택"}</span><i>→</i><span className={selectedRobot ? "done" : selected ? "active" : ""}><b>2</b>{selectedRobot ? ROBOT_META[selectedRobot].name : "로봇 선택"}</span><i>→</i><span className={selectedRobot ? "active" : ""}><b>3</b>행동 실행</span></section>
-        <section className="score-box"><small>SCORE</small><strong>{Math.max(0, game.score).toLocaleString()}</strong><span>COMBO {game.foundCombos.length}/5 · MAX ×{game.maxCombo}</span></section>
       </footer>
 
       {toast && <div className="toast" role="status">{toast}</div>}
@@ -593,9 +723,69 @@ function GameScreen({ game, visual, mapPanX, paused, soundOn, gameError, toast, 
   );
 }
 
-function DialogueModal({ view, mapPanX, onChoose }: { view: DialogueView; mapPanX: number; onChoose: (choiceId: string) => void }) {
+function ActionPopup({ incident, runtime, progress, robotId, actions, robotBusy, onAction, onClose }: {
+  incident: IncidentDefinition;
+  runtime: IncidentRuntime;
+  progress: number;
+  robotId: RobotId;
+  actions: ActionDefinition[];
+  robotBusy: boolean;
+  onAction: (id: ActionId) => void;
+  onClose: () => void;
+}) {
+  const meta = ROBOT_META[robotId];
+  const top = { aqua: 92, fix: 148, buddy: 204 }[robotId];
+  return (
+    <>
+      <button className="action-popup-scrim" onClick={onClose} aria-label="행동 선택 팝업 닫기" />
+      <section className={`action-popup pixel-command ${meta.color}`} style={{ top }} role="dialog" aria-modal="false" aria-labelledby="action-popup-title" data-action-popup={robotId}>
+        <button className="action-popup-close" onClick={onClose} aria-label="행동 선택 닫기">×</button>
+        <header>
+          <img src={`${ASSET}/ui/portraits/pp_ui_portrait_${robotId}_${robotBusy ? "busy" : "ready"}.png`} alt="" />
+          <span><small>ROBOT COMMAND</small><strong id="action-popup-title">{meta.name} 행동 선택</strong><em>{meta.role}</em></span>
+        </header>
+        <div className="action-popup-incident">
+          <span className={`severity severity-${runtime.severity}`}>위험 {runtime.severity}</span>
+          <strong>{incident.label}</strong>
+          <small>해결 진행 {progress}% · {runtime.status === "warning" ? "확산 전 선행 조치 가능" : `다음 확산까지 ${Math.ceil(runtime.remainingSpreadMs / 1_000)}초`}</small>
+        </div>
+        <div className="action-popup-buttons">
+          {actions.map((action) => (
+            <button key={action.id} disabled={robotBusy} onClick={() => onAction(action.id)}>
+              <span><b>{action.label}</b><em>{Math.ceil(action.durationMs / 1_000)}초</em></span>
+              <small>{action.description}</small>
+            </button>
+          ))}
+          {actions.length === 0 && <p>이 현장에서 {meta.name}이 수행할 수 있는 행동이 없습니다.</p>}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function NpcSpeechBubble({ speech, npcPosition, mapPanX, onClose }: { speech: NpcSpeech; npcPosition: StagePoint; mapPanX: number; onClose: () => void }) {
+  const npc = NPC_DIALOGUES[speech.npcId];
+  const anchorX = npcPosition[0] + mapPanX;
+  const width = 306;
+  const left = Math.max(270, Math.min(984 - width - 12, anchorX - width / 2));
+  const top = Math.max(82, npcPosition[1] - 174);
+  const pointerX = Math.max(34, Math.min(width - 34, anchorX - left));
+  const style = { left, top, "--npc-pointer-x": `${pointerX}px` } as React.CSSProperties;
+  return (
+    <aside className={`npc-speech ${speech.loading ? "is-loading" : ""}`} style={style} role="status" aria-live="polite" data-npc-speech={speech.npcId} data-dialogue-source={speech.loading ? "loading" : speech.source}>
+      <button className="npc-speech-close" onClick={onClose} aria-label="주민 말풍선 닫기">×</button>
+      <span className="npc-avatar" style={{ backgroundImage: `url(${ASSET}/characters/npcs/pp_char_npc_${npc.spriteId}_idle.png)` }} aria-hidden="true" />
+      <span className="npc-speech-copy">
+        <span><b>{npc.name}</b><small>{npc.role}</small><em className={speech.loading ? "loading" : speech.source}>{speech.loading ? "AI THINKING" : speech.source === "openai" ? "GPT LIVE" : "LOCAL SAFE"}</em></span>
+        <p>{speech.loading ? <><i /> 캐릭터에 맞는 대사를 만들고 있어요…</> : speech.text}</p>
+      </span>
+    </aside>
+  );
+}
+
+function DialogueModal({ view, incidentPosition, mapPanX, onChoose }: { view: DialogueView; incidentPosition: StagePoint; mapPanX: number; onChoose: (choiceId: string) => void }) {
   const robot = view.definition.speaker === "주민" ? "buddy" : view.definition.speaker.toLowerCase();
-  const [baseIncidentX, incidentY] = INCIDENTS[view.pendingAction.incidentId].mapPosition;
+  const [baseIncidentX, incidentY] = incidentPosition;
   const incidentX = baseIncidentX + mapPanX;
   const leftSpace = incidentX - 256;
   const rightSpace = 984 - incidentX;
@@ -640,7 +830,7 @@ function LoadingScreen({ progress, error, onRetry }: { progress: number; error: 
 
 function TitleScreen({ soundOn, onSound, onStart, onHelp }: { soundOn: boolean; onSound: () => void; onStart: () => void; onHelp: () => void }) {
   return (
-    <section className="title-screen"><img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_title_final.webp`} alt="AQUA, FIX, BUDDY가 출동을 준비하는 구조 마을" /><div className="title-vignette" /><button className="sound-button icon-control" onClick={onSound} aria-label={soundOn ? "소리 끄기" : "소리 켜기"}><img src={`${ASSET}/ui/icons/pp_ui_icon_sound_${soundOn ? "on" : "off"}.png`} alt="" /></button><div className="title-content"><span className="title-kicker"><i /> CLICK · PLAN · COMBO <i /></span><div className="title-lockup"><span>NHN AI HACKATHON</span><h1>PIXEL <em>PANIC</em></h1><b>AI 구조대</b></div><p>번지는 사고를 분석하고 세 로봇을 올바른 순서로 배치하세요.<br /><strong>키보드 없이 클릭만으로 마을을 구조합니다.</strong></p><div className="title-actions"><PixelButton className="hero-button" onClick={onStart}>구조 작전 시작</PixelButton><PixelButton variant="secondary" onClick={onHelp}>플레이 방법</PixelButton></div></div><div className="role-pills" aria-label="구조 로봇 역할"><span className="aqua"><b>AQUA</b> FIRE & WATER</span><span className="fix"><b>FIX</b> REPAIR & POWER</span><span className="buddy"><b>BUDDY</b> RESCUE & CARE</span></div></section>
+    <section className="title-screen"><img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_title_final.webp`} alt="AQUA, FIX, BUDDY가 출동을 준비하는 구조 마을" /><div className="title-vignette" /><button className="sound-button icon-control" onClick={onSound} aria-label={soundOn ? "소리 끄기" : "소리 켜기"}><img src={`${ASSET}/ui/icons/pp_ui_icon_sound_${soundOn ? "on" : "off"}.png`} alt="" /></button><div className="title-content"><span className="title-kicker"><i /> NHN AI 해커톤 <i /></span><div className="title-lockup"><span>NHN AI HACKATHON</span><h1>PIXEL <em>PANIC</em></h1><b>AI 구조대</b></div><p>번지는 사고를 분석하고 세 로봇을 올바른 순서로 배치하세요.<br /><strong>당신의 클릭으로 마을을 구조합니다.</strong></p><div className="title-actions"><PixelButton className="hero-button" onClick={onStart}>구조 작전 시작</PixelButton><PixelButton variant="secondary" onClick={onHelp}>플레이 방법</PixelButton></div></div><div className="role-pills" aria-label="구조 로봇 역할"><span className="aqua"><b>AQUA</b> FIRE & WATER</span><span className="fix"><b>FIX</b> REPAIR & POWER</span><span className="buddy"><b>BUDDY</b> RESCUE & CARE</span></div></section>
   );
 }
 
@@ -656,6 +846,6 @@ function ResultScreen({ game, onRetry, onTitle }: { game: RescueGameState; onRet
 function HudStat({ icon, label, value, emphasized = false }: { icon: string; label: string; value: string; emphasized?: boolean }) { return <div className={`hud-stat ${emphasized ? "emphasized" : ""}`}><img src={`${ASSET}/ui/icons/pp_ui_icon_${icon}.png`} alt="" /><span>{label}</span><strong>{value}</strong></div>; }
 function ResultStat({ icon, label, value }: { icon: string; label: string; value: string }) { return <div className="result-stat"><img src={`${ASSET}/ui/icons/pp_ui_icon_${icon}.png`} alt="" /><span>{label}</span><strong>{value}</strong></div>; }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal-card pixel-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button className="modal-close" onClick={onClose} aria-label="닫기">×</button><h2 id="modal-title">{title}</h2>{children}</section></div>;
+function Modal({ title, onClose, dismissible = true, children }: { title: string; onClose: () => void; dismissible?: boolean; children: React.ReactNode }) {
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => dismissible && event.target === event.currentTarget && onClose()}><section className="modal-card pixel-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">{dismissible && <button className="modal-close" onClick={onClose} aria-label="닫기">×</button>}<h2 id="modal-title">{title}</h2>{children}</section></div>;
 }
