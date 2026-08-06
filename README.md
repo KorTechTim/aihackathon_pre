@@ -8,9 +8,17 @@
 
 ## 아키텍처
 
+![PIXEL PANIC 현재 서비스 아키텍처](docs/architecture/pixel-panic-current-architecture.png)
+
+> 예선용 현행 구성입니다. 브라우저는 Vercel의 same-origin `/api/plan`만 호출하며,
+> Vercel 서버 Route가 OCI VM의 Fastify API와 통신합니다.
+
+[편집 가능한 PowerPoint](docs/architecture/pixel-panic-current-architecture.pptx) ·
+[구조화 모델](docs/architecture/pixel-panic-current-architecture-model.json)
+
 ```text
 브라우저 → Vercel Next.js same-origin /api/plan
-        → OCI Ubuntu 22.04 VM 공인 IP:8080 /v1/plan
+        → OCI Ubuntu 22.04 VM 공인 엔드포인트:8080 /v1/plan
         → OpenAI Responses API
 ```
 
@@ -19,6 +27,7 @@
 - OpenAI API 키는 OCI VM의 저장소 밖 환경파일에만 둡니다.
 - OCI/OpenAI/네트워크/429/5xx 장애 시 Vercel Route가 동일 schema의 `LOCAL` fallback을 반환합니다.
 - OCI API는 인증 후 전달된 client IP 기준으로 분당 60회, 동시 burst 6회 제한하며 성공 계획을 60초/100개 캐시합니다.
+- Vercel은 `main`을 자동 배포하고, OCI는 승인된 `main` 커밋을 수동 반영한 뒤 systemd로 컨테이너를 재기동합니다.
 
 프런트엔드는 Next.js 16.3, React 19.2, TypeScript, Phaser를 사용하고 백엔드는 Node.js 20, Fastify, OpenAI Node SDK, Docker로 구성됩니다.
 

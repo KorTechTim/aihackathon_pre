@@ -1,0 +1,101 @@
+{
+  "title": "PIXEL PANIC AI Rescue — Current Production Architecture",
+  "subtitle": "Preliminary deployment · Actual-state documentation",
+  "language": "ko",
+  "region": {
+    "name": "OCI Region",
+    "oci_region": ""
+  },
+  "assumptions": [
+    "현행 예선 배포 구조를 문서화한 actual-state 모델이며 권장 미래 구성을 추가하지 않습니다.",
+    "OCI Region, VCN/Subnet CIDR, Security List와 NSG의 실제 이름, AD/FD는 공개 문서에서 확인되지 않았습니다.",
+    "브라우저는 Vercel의 same-origin /api/plan만 호출하며 OCI VM이나 OpenAI를 직접 호출하지 않습니다."
+  ],
+  "architecture_notes": [
+    "Vercel Production은 Next.js 애플리케이션과 서버 검증 프록시를 실행하고, OCI 장애 시 동일 schema의 LOCAL fallback을 반환합니다.",
+    "Vercel 서버 Route는 공유 Bearer 인증으로 OCI 공인 엔드포인트의 TCP 8080 /v1/plan을 호출합니다.",
+    "OCI VM은 Ubuntu 22.04, UFW와 iptables, systemd, Docker Compose, Node.js/Fastify API로 구성됩니다.",
+    "Fastify API는 인증, IP 기반 rate limit, 동시 burst 제한, 성공 계획 cache, request ID 상관관계 로그를 적용합니다.",
+    "OCI 백엔드는 OpenAI Responses API를 HTTPS 443으로 호출하며 OpenAI 키는 저장소 밖 서버 환경파일에만 존재합니다.",
+    "GitHub main은 Vercel에 자동 배포되며 OCI는 승인된 main 커밋을 수동 fetch/checkout한 뒤 systemd reload로 반영합니다."
+  ],
+  "layout": {
+    "subnet_columns": 1
+  },
+  "oracle_service_network": {
+    "enabled": false,
+    "services": []
+  },
+  "vcn": {
+    "name": "PIXEL PANIC VCN",
+    "subnets": [
+      {
+        "name": "Public",
+        "type": "public",
+        "tier": "dmz",
+        "resources": [
+          "pixel-panic-api-prod-01"
+        ]
+      }
+    ],
+    "gateways": [
+      {
+        "id": "igw",
+        "type": "internet-gateway",
+        "label": "IGW"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "pixel-panic-api-prod-01",
+      "type": "compute",
+      "label": "pixel-panic-api-prod-01",
+      "subnet": "Public",
+      "placement": "edge",
+      "count": 1,
+      "icon_key": "compute",
+      "notes": [
+        "Ubuntu 22.04 host with UFW and iptables including DOCKER-USER filtering",
+        "systemd manages Docker Compose service pixel-panic-api",
+        "Node.js/Fastify exposes /health and authenticated /v1/plan on TCP 8080",
+        "Server-only secrets are loaded from /etc/pixel-panic/backend.env"
+      ]
+    }
+  ],
+  "operational_advice": {
+    "resilience": [
+      "현재 OCI 백엔드는 단일 VM이므로 고가용성이 없으며 Vercel LOCAL fallback이 게임 연속성을 보완합니다.",
+      "Docker healthcheck, restart unless-stopped, systemd 자동 기동으로 프로세스와 재부팅 복구를 점검합니다."
+    ],
+    "security": [
+      "브라우저에는 OCI 주소, 공유 Bearer 토큰, OpenAI API 키를 노출하지 않습니다.",
+      "OCI와 호스트 방화벽의 TCP 8080 허용 범위 및 DOCKER-USER 규칙을 함께 유지합니다.",
+      "공인 HTTP 8080은 현행 예선 제약이며 운영 확장 시 TLS 종단을 우선 검토합니다."
+    ],
+    "operations": [
+      "Vercel과 OCI 로그의 X-Request-Id를 연계해 요청 경로를 추적합니다.",
+      "컨테이너 로그는 10MB 파일 3개로 제한하고 /health 및 fallback 훈련을 반복합니다.",
+      "OCI 배포는 승인된 main 커밋만 수동 checkout하고 systemd reload 후 health를 확인합니다."
+    ],
+    "cost": [
+      "예선 범위에서는 단일 Compute VM과 Vercel 배포로 구성 요소를 최소화합니다.",
+      "고가용성, 관리형 진입 계층, TLS 종단은 대회 이후 요구와 비용을 함께 검토합니다."
+    ],
+    "open": [
+      "OCI Region과 VCN/Subnet CIDR은 공개 문서에서 미확정입니다.",
+      "Security List 또는 NSG의 실제 이름과 AD/FD 배치는 공개 문서에서 미확정입니다."
+    ]
+  },
+  "validation": {
+    "best_practice_deviations": [
+      "현행 Compute VM은 Public Subnet에 있고 별도 Bastion, Load Balancer, WAF, 관리형 API 진입 계층이 없습니다.",
+      "Vercel에서 OCI 공인 엔드포인트로 가는 구간은 HTTP 8080과 Bearer 인증을 사용하며 TLS 종단이 없습니다.",
+      "단일 OCI VM이므로 OCI 계층 자체의 고가용성 또는 재해복구 구성이 없습니다."
+    ],
+    "unresolved_questions": [
+      "OCI Region, VCN/Subnet CIDR, Security List 또는 NSG 실제 이름, AD/FD 배치",
+      "Vercel 고정 송신 IP 사용 여부와 TCP 8080 허용 소스 범위"
+    ]
+  }
+}
