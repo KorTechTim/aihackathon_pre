@@ -9,6 +9,13 @@ import { DIALOGUE_EVENTS, buildDialogueRequest, dialogueForAction, type Dialogue
 import { deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
 import { clampMapPanX, mapPanFromPointerDelta, revealMapAnchor } from "@/lib/map-pan";
 import { NPC_DIALOGUES, NPC_DIALOGUE_IDS, buildNpcDialogueRequest, type NpcDialogueId } from "@/lib/npc-dialogue";
+import {
+  buildSafetyQuizRequest,
+  fallbackSafetyQuiz,
+  normalizeSafetyQuiz,
+  type SafetyQuizOptionId,
+  type SafetyQuizResponse,
+} from "@/lib/safety-quiz";
 import { getStageMap, type StageMapDefinition, type StageMapId, type StagePoint } from "@/lib/stage-maps";
 import {
   ACTIONS,
@@ -28,6 +35,7 @@ import {
   getVisibleIncidents,
   selectIncident,
   selectRobot,
+  resolveActionWithSafetyQuiz,
   startAction,
   type ActionId,
   type ActionDefinition,
@@ -46,6 +54,13 @@ type DialogueView = {
   pendingAction: { incidentId: IncidentId; actionId: ActionId };
 };
 type NpcSpeech = { npcId: NpcDialogueId; text: string; source: "openai" | "fallback"; loading: boolean };
+type SafetyQuizView = {
+  quiz: SafetyQuizResponse;
+  pendingAction: { incidentId: IncidentId; actionId: ActionId };
+  loading: boolean;
+  selectedOptionId: SafetyQuizOptionId | null;
+  status: "answering" | "wrong" | "correct";
+};
 type MapDragState = { pointerId: number; startClientX: number; startOffset: number; renderedWidth: number };
 
 declare global {
@@ -110,12 +125,16 @@ export default function Home() {
   const [gameError, setGameError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [dialogue, setDialogue] = useState<DialogueView | null>(null);
+  const [safetyQuiz, setSafetyQuiz] = useState<SafetyQuizView | null>(null);
+  const [arrivedMissionQueue, setArrivedMissionQueue] = useState<ActiveRobotMission[]>([]);
   const [npcSpeech, setNpcSpeech] = useState<NpcSpeech | null>(null);
   const [actionPopupOpen, setActionPopupOpen] = useState(false);
   const [mapRunIndex, setMapRunIndex] = useState(0);
   const [mapPanX, setMapPanX] = useState(0);
   const [mapDragging, setMapDragging] = useState(false);
   const dialogueAbortRef = useRef<AbortController | null>(null);
+  const quizAbortRef = useRef<AbortController | null>(null);
+  const quizDispatchTimerRef = useRef<number | null>(null);
   const npcDialogueAbortRef = useRef<AbortController | null>(null);
   const npcSpeechTimerRef = useRef<number | null>(null);
   const mapDragRef = useRef<MapDragState | null>(null);
@@ -193,7 +212,7 @@ export default function Home() {
   }, [loadAttempt]);
 
   useEffect(() => {
-    if (screen !== "play" || paused || game.status !== "playing") {
+    if (screen !== "play" || paused || safetyQuiz || game.status !== "playing") {
       lastTickRef.current = null;
       return;
     }
@@ -205,7 +224,7 @@ export default function Home() {
       setGame((current) => advanceGame(current, delta, (dialogue ? 0.7 : 1) * tickScale));
     }, 250);
     return () => window.clearInterval(timer);
-  }, [dialogue, game.status, paused, screen]);
+  }, [dialogue, game.status, paused, safetyQuiz, screen]);
 
   useEffect(() => {
     if (screen !== "play" || game.status === "playing") return;
@@ -284,19 +303,25 @@ export default function Home() {
 
   useEffect(() => () => {
     dialogueAbortRef.current?.abort();
+    quizAbortRef.current?.abort();
     npcDialogueAbortRef.current?.abort();
     npcDialogueAbortRef.current = null;
     if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
+    if (quizDispatchTimerRef.current !== null) window.clearTimeout(quizDispatchTimerRef.current);
     if (resultTimerRef.current !== null) window.clearTimeout(resultTimerRef.current);
     audioRef.current?.dispose();
   }, []);
 
   const startGame = useCallback(() => {
     dialogueAbortRef.current?.abort();
+    quizAbortRef.current?.abort();
     npcDialogueAbortRef.current?.abort();
     npcDialogueAbortRef.current = null;
     if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
+    if (quizDispatchTimerRef.current !== null) window.clearTimeout(quizDispatchTimerRef.current);
     setDialogue(null);
+    setSafetyQuiz(null);
+    setArrivedMissionQueue([]);
     setNpcSpeech(null);
     setActionPopupOpen(false);
     setPaused(false);
@@ -345,7 +370,7 @@ export default function Home() {
   }, [game, playSound]);
 
   const talkToNpc = useCallback((npcId: NpcDialogueId) => {
-    if (paused || dialogue || showHelp) return;
+    if (paused || dialogue || safetyQuiz || showHelp) return;
     const npc = NPC_DIALOGUES[npcId];
     setActionPopupOpen(false);
     playSound("dialogue");
@@ -376,7 +401,7 @@ export default function Home() {
       }
       showSpeech(data.dialogue, data.source);
     }).catch(() => showSpeech(npc.fallbackDialogue, "fallback")).finally(() => window.clearTimeout(timeout));
-  }, [dialogue, game, paused, playSound, showHelp]);
+  }, [dialogue, game, paused, playSound, safetyQuiz, showHelp]);
 
   const closeNpcSpeech = useCallback(() => {
     npcDialogueAbortRef.current?.abort();
@@ -384,6 +409,50 @@ export default function Home() {
     if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
     setNpcSpeech(null);
   }, []);
+
+  const openSafetyQuiz = useCallback((incidentId: IncidentId, actionId: ActionId, currentGame: RescueGameState) => {
+    const action = ACTIONS[actionId];
+    const pending = currentGame.robots[action.robotId].pendingAction;
+    if (!pending || pending.incidentId !== incidentId || pending.actionId !== actionId) return;
+    const localFallback = fallbackSafetyQuiz(incidentId);
+    quizAbortRef.current?.abort();
+    if (quizDispatchTimerRef.current !== null) window.clearTimeout(quizDispatchTimerRef.current);
+    const controller = new AbortController();
+    quizAbortRef.current = controller;
+    setActionPopupOpen(false);
+    closeNpcSpeech();
+    setSafetyQuiz({ quiz: localFallback, pendingAction: { incidentId, actionId }, loading: true, selectedOptionId: null, status: "answering" });
+    const timeout = window.setTimeout(() => controller.abort(), 5_200);
+    void fetch("/api/quiz", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildSafetyQuizRequest(currentGame, incidentId, actionId)),
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) return localFallback;
+      const data = await response.json() as { source?: unknown };
+      const normalized = normalizeSafetyQuiz(data);
+      if (!normalized || data.source !== "openai" && data.source !== "fallback") return localFallback;
+      return { ...normalized, source: data.source } as SafetyQuizResponse;
+    }).catch(() => localFallback).then((quiz) => {
+      setSafetyQuiz((current) => current?.pendingAction.incidentId === incidentId && current.pendingAction.actionId === actionId
+        ? { ...current, quiz, loading: false }
+        : current);
+    }).finally(() => window.clearTimeout(timeout));
+  }, [closeNpcSpeech, playSound]);
+
+  const handleRobotArrive = useCallback((mission: ActiveRobotMission) => {
+    setArrivedMissionQueue((current) => current.some((queued) => queued.robotId === mission.robotId && queued.incidentId === mission.incidentId && queued.actionId === mission.actionId)
+      ? current
+      : [...current, mission]);
+  }, []);
+
+  useEffect(() => {
+    if (screen !== "play" || paused || showHelp || safetyQuiz || dialogue || arrivedMissionQueue.length === 0) return;
+    const mission = arrivedMissionQueue[0];
+    setArrivedMissionQueue((current) => current.slice(1));
+    openSafetyQuiz(mission.incidentId, mission.actionId, game);
+  }, [arrivedMissionQueue, dialogue, game, openSafetyQuiz, paused, safetyQuiz, screen, showHelp]);
 
   const requestAction = useCallback((actionId: ActionId) => {
     const incidentId = game.selectedIncidentId;
@@ -406,16 +475,41 @@ export default function Home() {
 
   const chooseDialogue = useCallback((choiceId: string) => {
     if (!dialogue) return;
-    playSound("dispatch");
     dialogueAbortRef.current?.abort();
-    setGame((current) => {
-      const decided = applyDialogueChoice(current, dialogue.definition.id, choiceId);
-      const result = startAction(decided, dialogue.pendingAction.incidentId, dialogue.pendingAction.actionId);
-      if (!result.ok) setToast(result.error ?? "출동할 수 없습니다.");
-      return result.state;
-    });
+    const decided = applyDialogueChoice(game, dialogue.definition.id, choiceId);
     setDialogue(null);
-  }, [dialogue, playSound]);
+    const result = startAction(decided, dialogue.pendingAction.incidentId, dialogue.pendingAction.actionId);
+    if (!result.ok) {
+      playSound("failure");
+      setToast(result.error ?? "출동할 수 없습니다.");
+      setGame(decided);
+      return;
+    }
+    playSound("dispatch");
+    setGame(result.state);
+  }, [dialogue, game, playSound]);
+
+  const answerSafetyQuiz = useCallback((optionId: SafetyQuizOptionId) => {
+    if (!safetyQuiz || safetyQuiz.loading || safetyQuiz.status === "correct") return;
+    if (optionId !== safetyQuiz.quiz.correctOptionId) {
+      playSound("failure");
+      setSafetyQuiz((current) => current ? { ...current, selectedOptionId: optionId, status: "wrong" } : current);
+      return;
+    }
+    playSound("success");
+    setSafetyQuiz((current) => current ? { ...current, selectedOptionId: optionId, status: "correct" } : current);
+    const pending = safetyQuiz.pendingAction;
+    quizDispatchTimerRef.current = window.setTimeout(() => {
+      setGame((current) => {
+        const robotId = ACTIONS[pending.actionId].robotId;
+        const result = resolveActionWithSafetyQuiz(current, robotId, pending.incidentId, pending.actionId);
+        if (!result.ok) setToast(result.error ?? "현장을 해결할 수 없습니다.");
+        return result.state;
+      });
+      setSafetyQuiz(null);
+      playSound("resolve");
+    }, 750);
+  }, [playSound, safetyQuiz]);
 
   const toggleSound = useCallback(() => {
     const next = !soundOn;
@@ -469,10 +563,13 @@ export default function Home() {
   const confirmHelp = useCallback(() => {
     playSound("button");
     dialogueAbortRef.current?.abort();
+    quizAbortRef.current?.abort();
     npcDialogueAbortRef.current?.abort();
     npcDialogueAbortRef.current = null;
     if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
     setDialogue(null);
+    setSafetyQuiz(null);
+    setArrivedMissionQueue([]);
     setNpcSpeech(null);
     setActionPopupOpen(false);
     setPaused(false);
@@ -482,13 +579,13 @@ export default function Home() {
   }, [getAudio, playSound, screen]);
 
   const beginMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || paused || dialogue || showHelp) return;
+    if (event.button !== 0 || paused || dialogue || safetyQuiz || showHelp) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     mapDragRef.current = { pointerId: event.pointerId, startClientX: event.clientX, startOffset: mapPanX, renderedWidth: bounds.width };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
     setMapDragging(true);
-  }, [dialogue, mapPanX, paused, showHelp]);
+  }, [dialogue, mapPanX, paused, safetyQuiz, showHelp]);
 
   const moveMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = mapDragRef.current;
@@ -543,6 +640,7 @@ export default function Home() {
             onSound={toggleSound}
             onHelp={openHelp}
             onGameError={setGameError}
+            onRobotArrive={handleRobotArrive}
           />
         )}
         {screen === "result" && <ResultScreen game={game} onRetry={startGame} onTitle={() => setScreen("title")} />}
@@ -550,6 +648,7 @@ export default function Home() {
         {game.briefingMs > 0 && screen === "play" && <WaveBriefing wave={game.wave} />}
         {game.comboBanner && screen === "play" && <div className="combo-banner"><small>PERFECT COMBO</small><strong>{game.comboBanner}</strong><span>+150</span></div>}
         {dialogue && screen === "play" && <DialogueModal view={dialogue} incidentPosition={stageMap.incidentPositions[dialogue.pendingAction.incidentId]} mapPanX={mapPanX} onChoose={chooseDialogue} />}
+        {safetyQuiz && screen === "play" && <SafetyQuizModal view={safetyQuiz} onAnswer={answerSafetyQuiz} />}
         {screen === "play" && (
           <>
             <div
@@ -576,7 +675,7 @@ export default function Home() {
         )}
         {showHelp && (
           <Modal title="클릭 구조 매뉴얼" onClose={closeHelp} dismissible={false}>
-            <ol className="how-to-list"><li><b>1</b><span>지도 빈 공간을 좌우로 드래그해 가려진 지역을 살펴봅니다.</span></li><li><b>2</b><span>주민 머리 위 말풍선 아이콘을 클릭하면 AI 대화를 들을 수 있습니다.</span></li><li><b>3</b><span>지도나 왼쪽 목록에서 사고를 클릭합니다.</span></li><li><b>4</b><span>현장에 맞는 구조 로봇과 행동 순서를 조합합니다.</span></li></ol>
+            <ol className="how-to-list"><li><b>1</b><span>지도 빈 공간을 좌우로 드래그해 가려진 지역을 살펴봅니다.</span></li><li><b>2</b><span>주민 머리 위 말풍선 아이콘을 클릭하면 AI 대화를 들을 수 있습니다.</span></li><li><b>3</b><span>지도나 왼쪽 목록에서 사고와 구조 로봇의 행동을 선택합니다.</span></li><li><b>4</b><span>로봇이 현장에 도착하면 AI 안전 퀴즈를 맞혀 사고를 해결합니다.</span></li></ol>
             <PixelButton onClick={confirmHelp}>확인</PixelButton>
           </Modal>
         )}
@@ -585,7 +684,7 @@ export default function Home() {
   );
 }
 
-function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpen, paused, soundOn, gameError, toast, onIncident, onRobot, onAction, onNpc, onCloseNpc, onCloseActions, onPause, onSound, onHelp, onGameError }: {
+function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpen, paused, soundOn, gameError, toast, onIncident, onRobot, onAction, onNpc, onCloseNpc, onCloseActions, onPause, onSound, onHelp, onGameError, onRobotArrive }: {
   game: RescueGameState;
   visual: { phase: OperationPhase; completed: LegacyIncidentId[]; missions: ActiveRobotMission[] };
   stageMap: StageMapDefinition;
@@ -606,6 +705,7 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
   onSound: () => void;
   onHelp: () => void;
   onGameError: (message: string) => void;
+  onRobotArrive: (mission: ActiveRobotMission) => void;
 }) {
   const resolvedCount = getResolvedCount(game);
   const visible = getVisibleIncidents(game);
@@ -619,7 +719,7 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
 
   return (
     <section className="game-screen" aria-label="PIXEL PANIC 클릭 구조 작전" data-wave={game.wave} data-stage-map={stageMap.id} data-status={game.status} data-resolved={resolvedCount}>
-      <GameCanvas phase={visual.phase} completedIncidents={visual.completed} missions={visual.missions} stageMap={stageMap} panX={mapPanX} onError={onGameError} />
+      <GameCanvas phase={visual.phase} completedIncidents={visual.completed} missions={visual.missions} stageMap={stageMap} panX={mapPanX} onError={onGameError} onRobotArrive={onRobotArrive} />
       <header className="top-hud pixel-panel">
         <div className="hud-brand"><img src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" /><span><strong>PIXEL PANIC</strong><small>CLICK RESCUE OPS</small></span></div>
         <HudStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} emphasized />
@@ -685,7 +785,7 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
           );
         })}
       </div>
-      {npcSpeech && <NpcSpeechBubble speech={npcSpeech} npcPosition={stageMap.npcPositions[npcSpeech.npcId]} mapPanX={mapPanX} onClose={onCloseNpc} />}
+      {npcSpeech && !npcSpeech.loading && <NpcSpeechBubble speech={npcSpeech} npcPosition={stageMap.npcPositions[npcSpeech.npcId]} mapPanX={mapPanX} onClose={onCloseNpc} />}
 
       <aside className="robot-panel pixel-panel" aria-label="구조 로봇 선택">
         <div className="panel-heading"><span>2 · 로봇 선택</span><small>3 ONLINE</small></div>
@@ -718,6 +818,7 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
         />
       )}
 
+      <LowerRescueFrame game={game} stageMap={stageMap} />
       <footer className="operation-dock pixel-command">
         <section className="mission-log"><strong>작전 로그</strong>{game.logs.slice(-3).map((log) => <span className={log.tone} key={log.id}>› {log.message}</span>)}</section>
       </footer>
@@ -726,6 +827,27 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
       {gameError && <div className="graphics-warning" role="status">그래픽 일부를 불러오지 못했지만 게임은 계속됩니다.</div>}
       {paused && <div className="pause-dim" />}
     </section>
+  );
+}
+
+function LowerRescueFrame({ game, stageMap }: { game: RescueGameState; stageMap: StageMapDefinition }) {
+  return (
+    <div className="lower-rescue-frame" aria-hidden="true" data-lower-rescue-frame={stageMap.id}>
+      <div className="lower-frame-rail"><i /><span>PIXEL PANIC · EMERGENCY RESPONSE COMMAND</span><i /></div>
+      <section className="lower-link-console">
+        <span className="lower-rescue-badge"><img src={`${ASSET}/ui/icons/pp_ui_icon_action_rescue.png`} alt="" /><i /></span>
+        <span className="lower-link-copy"><small>RESCUE CONTROL LINK</small><strong>{stageMap.label}</strong><em>WAVE {game.wave} · CHANNEL SECURE</em></span>
+        <span className="lower-signal" aria-hidden="true">{[2, 4, 6, 3, 7, 5, 8, 4, 6, 3, 5, 2].map((height, index) => <i key={index} style={{ height: `${height * 4}px`, animationDelay: `${index * -0.07}s` }} />)}</span>
+      </section>
+      <section className="lower-unit-console">
+        <header><span>RESCUE UNIT STATUS</span><small>{ROBOT_IDS.filter((id) => game.robots[id].status === "idle").length}/3 READY</small></header>
+        <div>{ROBOT_IDS.map((robotId) => {
+          const busy = game.robots[robotId].status !== "idle";
+          return <span className={`lower-unit ${robotId} ${busy ? "is-busy" : "is-ready"}`} key={robotId}><i /><b>{ROBOT_META[robotId].name}</b><small>{busy ? "ON SITE" : "STANDBY"}</small></span>;
+        })}</div>
+      </section>
+      <span className="lower-frame-chevron left">///</span><span className="lower-frame-chevron right">///</span>
+    </div>
   );
 }
 
@@ -778,14 +900,56 @@ function NpcSpeechBubble({ speech, npcPosition, mapPanX, onClose }: { speech: Np
   const pointerX = Math.max(34, Math.min(width - 34, anchorX - left));
   const style = { left, top, "--npc-pointer-x": `${pointerX}px` } as React.CSSProperties;
   return (
-    <aside className={`npc-speech ${speech.loading ? "is-loading" : ""}`} style={style} role="status" aria-live="polite" data-npc-speech={speech.npcId} data-dialogue-source={speech.loading ? "loading" : speech.source}>
+    <aside className="npc-speech" style={style} role="status" aria-live="polite" data-npc-speech={speech.npcId} data-dialogue-source={speech.source}>
       <button className="npc-speech-close" onClick={onClose} aria-label="주민 말풍선 닫기">×</button>
       <span className="npc-avatar" style={{ backgroundImage: `url(${ASSET}/characters/npcs/pp_char_npc_${npc.spriteId}_idle.png)` }} aria-hidden="true" />
       <span className="npc-speech-copy">
-        <span><b>{npc.name}</b><small>{npc.role}</small><em className={speech.loading ? "loading" : speech.source}>{speech.loading ? "AI THINKING" : speech.source === "openai" ? "GPT LIVE" : "LOCAL SAFE"}</em></span>
-        <p>{speech.loading ? <><i /> 캐릭터에 맞는 대사를 만들고 있어요…</> : speech.text}</p>
+        <span><b>{npc.name}</b><small>{npc.role}</small><em className={speech.source}>{speech.source === "openai" ? "GPT LIVE" : "LOCAL SAFE"}</em></span>
+        <p>{speech.text}</p>
       </span>
     </aside>
+  );
+}
+
+function SafetyQuizModal({ view, onAnswer }: { view: SafetyQuizView; onAnswer: (optionId: SafetyQuizOptionId) => void }) {
+  const incident = INCIDENTS[view.pendingAction.incidentId];
+  const action = ACTIONS[view.pendingAction.actionId];
+  const robot = ROBOT_META[action.robotId];
+  return (
+    <div className="modal-backdrop safety-quiz-backdrop" role="presentation">
+      <section
+        className={`safety-quiz-card pixel-panel ${view.status}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="safety-quiz-title"
+        data-safety-quiz={view.pendingAction.incidentId}
+        data-quiz-source={view.loading ? "loading" : view.quiz.source}
+        data-quiz-status={view.status}
+      >
+        <header>
+          <img src={`${ASSET}/ui/portraits/pp_ui_portrait_${action.robotId}_busy.png`} alt="" />
+          <span><small>AI SAFETY CHECK · {robot.name} 현장 도착</small><h2 id="safety-quiz-title">{incident.label} 안전 퀴즈</h2><em>{action.label} 전 최종 확인</em></span>
+          <b className={view.loading ? "loading" : view.quiz.source}>{view.loading ? "GPT CONNECT" : view.quiz.source === "openai" ? "GPT LIVE" : "LOCAL SAFE"}</b>
+        </header>
+        {view.loading ? (
+          <div className="safety-quiz-loading" role="status" aria-live="polite"><i /><strong>현장 상황에 맞는 문제를 만들고 있습니다</strong><span>잠시만 기다려주세요. 이 동안 작전 시간은 멈춥니다.</span></div>
+        ) : (
+          <>
+            <p className="safety-quiz-question">{view.quiz.question}</p>
+            <div className="safety-quiz-options" aria-label="안전 퀴즈 보기">
+              {view.quiz.options.map((option) => {
+                const selectedWrong = view.status === "wrong" && view.selectedOptionId === option.id;
+                const selectedCorrect = view.status === "correct" && view.selectedOptionId === option.id;
+                return <button key={option.id} className={`${selectedWrong ? "is-wrong" : ""} ${selectedCorrect ? "is-correct" : ""}`} disabled={view.status === "correct"} data-quiz-option={option.id} onClick={() => onAnswer(option.id)}><b>{option.id.toUpperCase()}</b><span>{option.label}</span></button>;
+              })}
+            </div>
+            {view.status === "wrong" && <div className="safety-quiz-feedback wrong" role="alert"><strong>다시 생각해보세요!</strong><span>{view.quiz.explanation}</span></div>}
+            {view.status === "correct" && <div className="safety-quiz-feedback correct" role="status"><strong>정답입니다! 현장 해결 중</strong><span>{view.quiz.explanation}</span></div>}
+            {view.status === "answering" && <small className="safety-quiz-tip">정답을 선택하면 로봇이 장애 상황을 해결합니다.</small>}
+          </>
+        )}
+      </section>
+    </div>
   );
 }
 

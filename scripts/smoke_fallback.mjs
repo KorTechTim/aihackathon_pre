@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { collectPageErrors, fulfillDialogue } from "./qa_helpers.mjs";
+import { collectPageErrors, fulfillDialogue, fulfillQuiz } from "./qa_helpers.mjs";
 
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3100";
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = collectPageErrors(page);
 await page.route("**/api/dialogue", (route) => fulfillDialogue(route, "fallback"));
+await page.route("**/api/quiz", (route) => fulfillQuiz(route, "fallback"));
 await page.goto(`${baseUrl}/?screen=play&skipBriefing=1`, { waitUntil: "networkidle" });
 await page.locator(".incident-row").filter({ hasText: "빵집 화재" }).click();
 await page.locator(".robot-card").filter({ hasText: "BUDDY" }).click();
@@ -14,7 +15,12 @@ await page.getByRole("button", { name: /^주민 대피/ }).click();
 await page.getByText("LOCAL SAFE").waitFor();
 await page.getByRole("button", { name: "가스통 위치를 FIX에 공유" }).click();
 await page.waitForFunction(() => window.__PIXEL_PANIC_DEBUG__?.game?.robots?.buddy?.status !== "idle");
+const quiz = page.locator('[data-safety-quiz="bakery_fire"]');
+await quiz.waitFor({ state: "visible", timeout: 8_000 });
+assert.equal(await quiz.getAttribute("data-quiz-source"), "fallback");
+await quiz.locator('[data-quiz-option="b"]').click();
+await page.waitForFunction(() => window.__PIXEL_PANIC_DEBUG__?.game?.incidents?.bakery_fire?.completedActions?.includes("evacuate"));
 assert.equal(await page.locator("input, textarea").count(), 0);
 assert.deepEqual(errors, []);
 await browser.close();
-console.log("Dialogue fallback PASSED: no natural-language input, LOCAL SAFE choice keeps game running");
+console.log("AI fallback PASSED: LOCAL SAFE dialogue and safety quiz keep the click-only game running");

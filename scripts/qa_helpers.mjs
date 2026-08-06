@@ -27,6 +27,27 @@ export async function fulfillDialogue(route, source = "fallback") {
   });
 }
 
+export async function fulfillQuiz(route, source = "fallback") {
+  const request = route.request().postDataJSON();
+  await route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      question: `${request.incidentLabel} 현장에서 가장 안전한 행동은 무엇일까요?`,
+      options: [
+        { id: "a", label: "보호 장비 없이 바로 접근한다" },
+        { id: "b", label: "주변을 통제하고 안전 절차에 따라 대응한다" },
+        { id: "c", label: "위험 신호를 무시하고 혼자 처리한다" },
+      ],
+      correctOptionId: "b",
+      explanation: "주변 접근을 통제하고 상황에 맞는 안전 절차를 지키는 것이 우선입니다.",
+      source,
+      requestId: "qa-quiz-request",
+      ...(source === "fallback" ? { degradedReason: "OCI_UNAVAILABLE" } : {}),
+    }),
+  });
+}
+
 export async function waitForDebug(page, predicate, argument, timeout = 8_000) {
   await page.waitForFunction(predicate, argument, { timeout });
 }
@@ -38,8 +59,12 @@ export async function performAction(page, { incidentId, robot, actionName, actio
   await page.getByRole("button", { name: new RegExp(`${robot} 초상화 ${robot}`) }).click();
   await page.getByRole("button", { name: new RegExp(`^${actionName}`) }).click();
   if (dialogueChoice) await page.getByRole("button", { name: dialogueChoice }).click();
+  const quiz = page.locator(`[data-safety-quiz="${incidentId}"]`);
+  await quiz.waitFor({ state: "visible", timeout: 8_000 });
+  await quiz.locator('[data-quiz-option="b"]').click();
+  await quiz.waitFor({ state: "hidden", timeout: 3_000 });
   await waitForDebug(page, ({ expectedIncident, expectedAction, expectedRobot }) => {
     const game = window.__PIXEL_PANIC_DEBUG__?.game;
     return game?.robots?.[expectedRobot]?.status === "idle" && game?.incidents?.[expectedIncident]?.completedActions?.includes(expectedAction);
-  }, { expectedIncident: incidentId, expectedAction: actionId, expectedRobot: robot.toLowerCase() }, 10_000);
+  }, { expectedIncident: incidentId, expectedAction: actionId, expectedRobot: robot.toLowerCase() }, 3_000);
 }

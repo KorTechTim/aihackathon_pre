@@ -16,13 +16,14 @@ const ASSET = "/assets/pixel-panic";
 const ROBOTS: RobotId[] = ["aqua", "fix", "buddy"];
 const LEGACY_INCIDENTS: LegacyIncidentId[] = ["fire", "bridge", "cat", "generator"];
 
-export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX = 0, onError }: { phase: OperationPhase; completedIncidents: readonly LegacyIncidentId[]; missions: readonly ActiveRobotMission[]; stageMap: StageMapDefinition; panX?: number; onError?: (message: string) => void }) {
+export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX = 0, onError, onRobotArrive }: { phase: OperationPhase; completedIncidents: readonly LegacyIncidentId[]; missions: readonly ActiveRobotMission[]; stageMap: StageMapDefinition; panX?: number; onError?: (message: string) => void; onRobotArrive?: (mission: ActiveRobotMission) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const phaseRef = useRef(phase);
   const completedRef = useRef<readonly LegacyIncidentId[]>(completedIncidents);
   const missionsRef = useRef<readonly ActiveRobotMission[]>(missions);
   const stageMapRef = useRef(stageMap);
   const errorRef = useRef(onError);
+  const robotArriveRef = useRef(onRobotArrive);
   const sceneRef = useRef<{ setOperationState: (next: OperationPhase, completed: readonly LegacyIncidentId[], activeMissions: readonly ActiveRobotMission[]) => void; setStageMap: (next: StageMapDefinition) => void } | null>(null);
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
     sceneRef.current?.setStageMap(stageMap);
   }, [stageMap]);
   useEffect(() => { errorRef.current = onError; }, [onError]);
+  useEffect(() => { robotArriveRef.current = onRobotArrive; }, [onRobotArrive]);
 
   useEffect(() => {
     let game: import("phaser").Game | null = null;
@@ -244,6 +246,7 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
           sprite.setPosition(start[0], start[1]).setAlpha(1).setVisible(true).play(`${robot}-idle-anim`, true);
           shadow?.setPosition(start[0], start[1] + 10).setVisible(true);
           this.writeRobotPosition(robot, start[0], start[1]);
+          if (containerRef.current) containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Movement`] = "idle";
         }
 
         private writeRobotPosition(robot: RobotId, x: number, y: number) {
@@ -326,7 +329,24 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
           return points;
         }
 
-        private moveRobot(robot: RobotId, incident: IncidentId, duration: number, onArrive: () => void) {
+        private densifyWalkRoute(fromX: number, fromY: number, waypoints: readonly [number, number][]): Array<[number, number]> {
+          const dense: Array<[number, number]> = [];
+          let startX = fromX;
+          let startY = fromY;
+          for (const [targetX, targetY] of waypoints) {
+            const distance = Math.hypot(targetX - startX, targetY - startY);
+            const steps = Math.max(1, Math.ceil(distance / 28));
+            for (let step = 1; step <= steps; step += 1) {
+              const progress = step / steps;
+              dense.push([startX + (targetX - startX) * progress, startY + (targetY - startY) * progress]);
+            }
+            startX = targetX;
+            startY = targetY;
+          }
+          return dense;
+        }
+
+        private moveRobot(robot: RobotId, incident: IncidentId, onArrive: () => void) {
           const sprite = this.robots.get(robot);
           const target = this.activeMap.incidentPositions[incident];
           if (!sprite) return;
@@ -334,21 +354,29 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
           this.tweens.killTweensOf(sprite);
           sprite.play(`${robot}-walk-anim`, true);
           const customRoute = this.activeMap.routes?.[incident];
-          const points: Array<[number, number]> = customRoute
+          const waypoints: Array<[number, number]> = customRoute
             ? customRoute.map(([x, y]) => [x, y])
             : this.findWalkPath(sprite.x, sprite.y, target[0], target[1]);
+          const points = this.densifyWalkRoute(sprite.x, sprite.y, waypoints);
+          if (containerRef.current) {
+            containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Movement`] = "walking";
+            containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}RouteSteps`] = String(points.length);
+          }
           const distances = points.map((point, index) => {
             const from = index === 0 ? [sprite.x, sprite.y] : points[index - 1];
             return Math.hypot(point[0] - from[0], point[1] - from[1]);
           });
           const totalDistance = Math.max(1, distances.reduce((sum, distance) => sum + distance, 0));
+          const duration = Math.max(1000, Math.min(3800, totalDistance / 220 * 1000));
           const walk = (index: number) => {
             const point = points[index];
             if (!point) {
               sprite.play(`${robot}-action-anim`, true);
+              if (containerRef.current) containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Movement`] = "working";
               onArrive();
               return;
             }
+            if (Math.abs(point[0] - sprite.x) > 1) sprite.setFlipX(point[0] < sprite.x);
             this.tweens.add({
               targets: sprite,
               x: point[0], y: point[1],
@@ -401,7 +429,10 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
               containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Mission`] = mission.incidentId;
               containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Target`] = `${targetX},${targetY}`;
             }
-            this.moveRobot(robot, mission.incidentId, 1100, () => this.playMissionEffect(mission));
+            this.moveRobot(robot, mission.incidentId, () => {
+              this.playMissionEffect(mission);
+              robotArriveRef.current?.(mission);
+            });
           }
         }
 

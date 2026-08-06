@@ -9,6 +9,7 @@ import {
   createInitialGame,
   getGrade,
   getIncidentProgress,
+  resolveActionWithSafetyQuiz,
   startAction,
   type ActionId,
   type IncidentId,
@@ -22,10 +23,9 @@ function skipBriefing(state: RescueGameState): RescueGameState {
 function complete(state: RescueGameState, incidentId: IncidentId, actionId: ActionId): RescueGameState {
   const started = startAction(state, incidentId, actionId);
   assert.equal(started.ok, true, started.error ?? "action should start");
-  let next = started.state;
-  const acceleratedTicks = Math.ceil(ACTIONS[actionId].durationMs / 8_000);
-  for (let index = 0; index < acceleratedTicks; index += 1) next = advanceGame(next, 2_000, 4);
-  return next;
+  const resolved = resolveActionWithSafetyQuiz(started.state, ACTIONS[actionId].robotId, incidentId, actionId);
+  assert.equal(resolved.ok, true, resolved.error ?? "quiz should resolve action");
+  return resolved.state;
 }
 
 test("초기 상태는 고정 시드와 3분 30초 타이머를 사용한다", () => {
@@ -105,6 +105,9 @@ test("선택 사고의 해결 진행률은 로봇 작업 상태에서 결정론�
   state = advanceGame(state, 2_000);
   state = advanceGame(state, 2_000);
   assert.equal(getIncidentProgress(state, "electrical_short"), 100);
+  assert.equal(state.incidents.electrical_short.status, "active", "정답 전에는 자동 해결되지 않는다");
+  state = resolveActionWithSafetyQuiz(state, "fix", "electrical_short", "cut_power").state;
+  assert.equal(state.incidents.electrical_short.status, "resolved");
 });
 
 test("등급은 보존율·구조·콤보 조건으로 결정된다", () => {

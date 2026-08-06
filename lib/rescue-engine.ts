@@ -76,6 +76,7 @@ export type PendingAction = {
   actionId: ActionId;
   remainingMs: number;
   totalMs: number;
+  awaitingSafetyQuiz: boolean;
 };
 
 export type RobotRuntime = {
@@ -308,7 +309,7 @@ export function startAction(state: RescueGameState, incidentId: IncidentId, acti
     targetNodeId: INCIDENTS[incidentId].nodeId,
     currentAction: actionId,
     remainingActionMs: durationMs,
-    pendingAction: { incidentId, actionId, remainingMs: durationMs, totalMs: durationMs },
+    pendingAction: { incidentId, actionId, remainingMs: durationMs, totalMs: durationMs, awaitingSafetyQuiz: true },
   };
   next.selectedRobotId = definition.robotId;
   appendLog(next, `${definition.robotId.toUpperCase()} 출동 · ${INCIDENTS[incidentId].shortLabel} ${definition.label}`);
@@ -384,6 +385,19 @@ function completeAction(state: RescueGameState, robotId: RobotId): void {
   state.robots[robotId] = { ...robot, status: "idle", currentNodeId: INCIDENTS[pending.incidentId].nodeId, targetNodeId: undefined, currentAction: undefined, remainingActionMs: undefined, pendingAction: undefined, energy: Math.max(0, robot.energy - 8) };
 }
 
+export type SafetyQuizResolutionResult = { state: RescueGameState; ok: boolean; error?: string };
+
+export function resolveActionWithSafetyQuiz(state: RescueGameState, robotId: RobotId, incidentId: IncidentId, actionId: ActionId): SafetyQuizResolutionResult {
+  const pending = state.robots[robotId].pendingAction;
+  if (!pending || pending.incidentId !== incidentId || pending.actionId !== actionId) {
+    return { state, ok: false, error: "현장 대기 중인 구조 임무를 찾을 수 없습니다." };
+  }
+  const next = cloneState(state);
+  appendLog(next, `안전 퀴즈 정답 · ${robotId.toUpperCase()} 현장 해결`, "success");
+  completeAction(next, robotId);
+  return { state: next, ok: true };
+}
+
 function allIncidentsResolved(state: RescueGameState): boolean {
   return INCIDENT_IDS.every((id) => isResolvedStatus(state.incidents[id].status));
 }
@@ -408,10 +422,10 @@ export function advanceGame(state: RescueGameState, rawDeltaMs: number, timerSca
   for (const robotId of ROBOT_IDS) {
     const robot = next.robots[robotId];
     if (!robot.pendingAction) continue;
-    robot.pendingAction.remainingMs = Math.max(0, robot.pendingAction.remainingMs - deltaMs);
+    robot.pendingAction.remainingMs = Math.max(robot.pendingAction.awaitingSafetyQuiz ? 1 : 0, robot.pendingAction.remainingMs - deltaMs);
     robot.remainingActionMs = robot.pendingAction.remainingMs;
     robot.status = robot.pendingAction.remainingMs <= robot.pendingAction.totalMs * 0.72 ? "working" : "moving";
-    if (robot.pendingAction.remainingMs === 0) completeAction(next, robotId);
+    if (!robot.pendingAction.awaitingSafetyQuiz && robot.pendingAction.remainingMs === 0) completeAction(next, robotId);
   }
 
   for (const incidentId of INCIDENT_IDS) {

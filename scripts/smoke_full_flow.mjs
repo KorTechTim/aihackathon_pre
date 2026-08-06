@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { collectPageErrors, fulfillDialogue, performAction } from "./qa_helpers.mjs";
+import { collectPageErrors, fulfillDialogue, fulfillQuiz, performAction } from "./qa_helpers.mjs";
 
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3100";
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = collectPageErrors(page);
 await page.route("**/api/dialogue", (route) => fulfillDialogue(route, "openai"));
+await page.route("**/api/quiz", (route) => fulfillQuiz(route, "openai"));
 await page.goto(`${baseUrl}/?screen=play&skipBriefing=1&qaAll=1&tickScale=4`, { waitUntil: "networkidle" });
 await page.locator("canvas").waitFor();
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { collectPageErrors, fulfillDialogue } from "./qa_helpers.mjs";
+import { collectPageErrors, fulfillDialogue, fulfillQuiz } from "./qa_helpers.mjs";
 
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3000";
 const browser = await chromium.launch({ headless: true });
@@ -23,6 +23,7 @@ await titlePage.close();
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = collectPageErrors(page);
 await page.route("**/api/dialogue", (route) => fulfillDialogue(route, "openai"));
+await page.route("**/api/quiz", (route) => fulfillQuiz(route, "openai"));
 await page.goto(`${baseUrl}/?screen=play&skipBriefing=1`, { waitUntil: "networkidle" });
 await page.locator("canvas").waitFor({ state: "visible" });
 await page.getByText("CLICK RESCUE OPS").waitFor();
@@ -31,6 +32,9 @@ assert.equal(await page.locator(".game-screen").getAttribute("data-stage-map"), 
 assert.equal(await page.locator(".mission-flow, .score-box").count(), 0);
 const operationDock = await page.locator(".operation-dock").boundingBox();
 assert.equal(Boolean(operationDock && operationDock.width <= 430 && operationDock.height <= 88), true);
+const lowerFrame = await page.locator("[data-lower-rescue-frame]").boundingBox();
+assert.equal(Boolean(lowerFrame && lowerFrame.width === 1280 && lowerFrame.height === 116 && lowerFrame.y >= 604), true);
+assert.equal(await page.locator(".lower-unit-console .lower-unit").count(), 3);
 const incidentRects = await page.locator(".incident-pin").evaluateAll((pins) => pins.map((pin) => {
   const rect = pin.getBoundingClientRect();
   return { id: pin.getAttribute("data-incident-id"), left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
@@ -99,7 +103,19 @@ await page.getByRole("button", { name: "가스통 위치를 FIX에 공유" }).cl
 await page.getByRole("dialog").waitFor({ state: "hidden" });
 await page.waitForFunction(() => document.querySelector(".phaser-canvas")?.getAttribute("data-robot-buddy-mission") === "bakery_fire");
 assert.equal(await page.locator(".phaser-canvas").getAttribute("data-robot-buddy-target"), "300,252");
+assert.equal(Number(await page.locator(".phaser-canvas").getAttribute("data-robot-buddy-route-steps")) > 5, true);
 await page.waitForFunction(() => document.querySelector(".phaser-canvas")?.getAttribute("data-robot-buddy-position") === "300,252");
+await page.waitForFunction(() => document.querySelector(".phaser-canvas")?.getAttribute("data-robot-buddy-movement") === "working");
+const quiz = page.locator('[data-safety-quiz="bakery_fire"]');
+await quiz.waitFor({ state: "visible" });
+await page.waitForFunction(() => document.querySelector('[data-safety-quiz="bakery_fire"]')?.getAttribute("data-quiz-source") === "openai");
+assert.match(await quiz.locator(".safety-quiz-question").innerText(), /빵집 화재/);
+await quiz.locator('[data-quiz-option="a"]').click();
+assert.equal(await quiz.getAttribute("data-quiz-status"), "wrong");
+assert.equal((await page.evaluate(() => window.__PIXEL_PANIC_DEBUG__?.game.incidents.bakery_fire.completedActions.includes("evacuate"))) ?? false, false);
+await quiz.locator('[data-quiz-option="b"]').click();
+await quiz.waitFor({ state: "hidden" });
+await page.waitForFunction(() => window.__PIXEL_PANIC_DEBUG__?.game.incidents.bakery_fire.completedActions.includes("evacuate"));
 
 const manifestResponse = await page.request.get(`${baseUrl}/assets/pixel-panic/manifests/asset-manifest.json`);
 assert.equal(manifestResponse.ok(), true);
@@ -127,4 +143,4 @@ assert.deepEqual(highlandIncidentPosition, { left: "985px", top: "445px" });
 await waveThreePage.close();
 assert.deepEqual([...titleErrors, ...errors], []);
 await browser.close();
-console.log("Responsive smoke PASSED: exact robot mission targets, title/mission audio, 9 rotating maps with unique placements, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");
+console.log("Responsive smoke PASSED: lower rescue command frame, arrival-triggered AI safety quiz, step-by-step road routes and exact robot targets, title/mission audio, 9 rotating maps, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");

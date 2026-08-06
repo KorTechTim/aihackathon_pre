@@ -29,6 +29,18 @@ const CLASSIC_INCIDENTS = {
   cat_trapped: [496, 176], east_residents: [1110, 500],
 } as const;
 const CLASSIC_TARGETS = { fire: [300, 208], bridge: [848, 336], cat: [496, 176], generator: [992, 208] } as const;
+const CLASSIC_ROUTES = {
+  electrical_short: [[340, 450], [500, 370], [500, 280], [700, 280], [850, 310], [980, 280], [1080, 230], [1144, 166]],
+  bakery_fire: [[340, 450], [470, 370], [430, 290], [330, 275], [300, 252]],
+  gas_risk: [[340, 450], [520, 370], [700, 320], [850, 330], [1000, 330], [1210, 330]],
+  power_flood: [[340, 450], [520, 370], [700, 300], [850, 310], [960, 280], [1010, 240]],
+  river_overflow: [[340, 470], [500, 500], [650, 520], [790, 520]],
+  bridge_damage: [[340, 450], [520, 370], [690, 330], [850, 350]],
+  resident_isolation: [[340, 450], [470, 470], [600, 470]],
+  house_fire: [[340, 450], [500, 370], [500, 280], [610, 220]],
+  cat_trapped: [[340, 450], [500, 370], [500, 280], [496, 176]],
+  east_residents: [[340, 450], [520, 370], [700, 320], [850, 330], [980, 380], [1050, 450], [1110, 500]],
+} as const;
 
 function classicMap(id: StageMapId, label: string, file: string): StageMapDefinition {
   return {
@@ -37,6 +49,7 @@ function classicMap(id: StageMapId, label: string, file: string): StageMapDefini
     npcPositions: CLASSIC_NPCS,
     incidentPositions: CLASSIC_INCIDENTS,
     legacyTargets: CLASSIC_TARGETS,
+    routes: CLASSIC_ROUTES,
     legacyStructureOverlays: true,
   };
 }
