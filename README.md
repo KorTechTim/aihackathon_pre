@@ -2,6 +2,12 @@
 
 자연어로 `AQUA`, `FIX`, `BUDDY` 세 구조 로봇을 지휘해 90초 안에 도트 마을의 네 가지 사고를 해결하는 캐주얼 구조 퍼즐 게임입니다.
 
+## 공개 데모
+
+[PIXEL PANIC 웹 데모 실행](https://pixel-panic-ai-rescue.vercel.app)
+
+데스크톱 또는 모바일 가로 화면을 권장합니다.
+
 ![PIXEL PANIC Phase 2 플레이 화면](visual-regression/phase2/01_world_initial.png)
 
 ## 현재 구현 상태
