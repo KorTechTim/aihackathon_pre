@@ -14,7 +14,7 @@
     "spritesheetMaximumBytes": 2000000
   },
   "totals": {
-    "P0": 1082780,
+    "P0": 1083156,
     "P1": 478169,
     "P2": 39408
   },
@@ -36,7 +36,7 @@
       "format": "png",
       "width": 128,
       "height": 128,
-      "bytes": 503,
+      "bytes": 879,
       "priority": "P0"
     },
     {

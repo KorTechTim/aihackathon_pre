@@ -142,11 +142,53 @@ def make_logo() -> None:
 
     mark = rgba((32, 32))
     m = ImageDraw.Draw(mark)
-    m.rectangle((5, 10, 27, 27), fill=C["navy"], outline=C["ink"], width=2)
-    m.rectangle((9, 5, 23, 12), fill=C["aqua"], outline=C["ink"], width=2)
-    m.rectangle((13, 2, 19, 6), fill=C["danger"], outline=C["ink"])
-    pixel_heart(m, 12, 15, C["buddy"], 1)
-    m.rectangle((3, 27, 29, 30), fill=C["fix"], outline=C["ink"])
+    # Rescue robot emblem: beacon, heart badge, expressive visor and armored chin.
+    m.rectangle((12, 0, 20, 5), fill=C["ink"])
+    m.rectangle((14, 1, 18, 4), fill=C["danger"])
+    m.point((14, 1), fill=C["cream"])
+    m.rectangle((10, 4, 22, 7), fill=C["ink"])
+    m.rectangle((12, 5, 20, 6), fill=C["fix"])
+
+    helmet = [(8, 6), (24, 6), (24, 8), (27, 8), (27, 11), (30, 11), (30, 24), (27, 24),
+              (27, 27), (23, 27), (23, 30), (9, 30), (9, 28), (5, 28), (5, 25), (2, 25),
+              (2, 11), (5, 11), (5, 8), (8, 8)]
+    m.polygon(helmet, fill=C["ink"])
+    helmet_inner = [(9, 8), (23, 8), (23, 10), (26, 10), (26, 13), (28, 13), (28, 22),
+                    (25, 22), (25, 25), (21, 25), (21, 27), (11, 27), (11, 25), (7, 25),
+                    (7, 22), (4, 22), (4, 13), (7, 13), (7, 10), (9, 10)]
+    m.polygon(helmet_inner, fill=C["navy"])
+    m.rectangle((7, 10, 9, 12), fill=C["navy2"])
+    m.rectangle((23, 10, 25, 12), fill=C["navy2"])
+
+    for hx, hy in ((14, 8), (17, 8), (13, 9), (14, 9), (15, 9), (16, 9), (17, 9), (18, 9),
+                   (14, 10), (15, 10), (16, 10), (17, 10), (15, 11), (16, 11)):
+        m.point((hx, hy), fill=C["buddy"])
+
+    visor = [(7, 12), (25, 12), (27, 14), (27, 20), (25, 22), (7, 22), (5, 20), (5, 14)]
+    m.polygon(visor, fill=C["ink"])
+    visor_inner = [(8, 14), (24, 14), (25, 15), (25, 19), (24, 20), (8, 20), (7, 19), (7, 15)]
+    m.polygon(visor_inner, fill=C["aqua"])
+    m.line((8, 14, 24, 14), fill=C["cream"])
+    for eye_x in (10, 20):
+        m.rectangle((eye_x - 1, 16, eye_x + 2, 19), fill=C["ink"])
+        m.point((eye_x, 16), fill=C["cream"])
+        m.point((eye_x + 2, 19), fill=C["aqua_dark"])
+
+    m.rectangle((2, 15, 5, 21), fill=C["navy2"])
+    m.rectangle((3, 16, 4, 18), fill=C["cream"])
+    m.rectangle((27, 15, 30, 21), fill=C["navy2"])
+    m.rectangle((28, 16, 29, 18), fill=C["cream"])
+    m.rectangle((3, 21, 5, 23), fill=C["fix_dark"])
+    m.rectangle((27, 21, 29, 23), fill=C["fix_dark"])
+
+    m.rectangle((12, 21, 20, 27), fill=C["ink"])
+    m.rectangle((14, 22, 18, 24), fill=C["metal"])
+    m.rectangle((14, 25, 15, 27), fill=C["navy2"])
+    m.rectangle((17, 25, 18, 27), fill=C["navy2"])
+    m.rectangle((8, 27, 12, 29), fill=C["fix_dark"])
+    m.rectangle((20, 27, 24, 29), fill=C["fix_dark"])
+    m.rectangle((13, 29, 19, 31), fill=C["fix"])
+    m.rectangle((15, 29, 17, 30), fill=C["cream"])
     save(scale(mark, 4), "brand/pp_brand_logo_mark.png", True)
 
 

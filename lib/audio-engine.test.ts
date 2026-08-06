@@ -1,12 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BGM_BASS, BGM_CHORDS, BGM_MELODY, midiToFrequency } from "./audio-engine";
+import {
+  BGM_BASS,
+  BGM_CHORDS,
+  BGM_MELODY,
+  TITLE_BGM_BASS,
+  TITLE_BGM_CHORDS,
+  TITLE_BGM_MELODY,
+  midiToFrequency,
+} from "./audio-engine";
 
 test("오리지널 BGM 패턴은 완전한 32스텝 루프와 4개 화음을 가진다", () => {
   assert.equal(BGM_MELODY.length, 32);
   assert.equal(BGM_BASS.length, 8);
   assert.equal(BGM_CHORDS.length, 4);
   assert.equal(BGM_MELODY.some((note) => note === null), true);
+});
+
+test("타이틀 BGM은 게임 BGM과 다른 완전한 오리지널 루프를 사용한다", () => {
+  assert.equal(TITLE_BGM_MELODY.length, 32);
+  assert.equal(TITLE_BGM_BASS.length, 8);
+  assert.equal(TITLE_BGM_CHORDS.length, 4);
+  assert.notDeepEqual(TITLE_BGM_MELODY, BGM_MELODY);
 });
 
 test("MIDI 음높이를 Web Audio 주파수로 정확히 변환한다", () => {

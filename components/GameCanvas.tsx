@@ -13,7 +13,7 @@ const ASSET = "/assets/pixel-panic";
 const ROBOTS: RobotId[] = ["aqua", "fix", "buddy"];
 const INCIDENTS: IncidentId[] = ["fire", "bridge", "cat", "generator"];
 
-export function GameCanvas({ phase, completedIncidents, onError }: { phase: OperationPhase; completedIncidents: readonly IncidentId[]; onError?: (message: string) => void }) {
+export function GameCanvas({ phase, completedIncidents, panX = 0, onError }: { phase: OperationPhase; completedIncidents: readonly IncidentId[]; panX?: number; onError?: (message: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const phaseRef = useRef(phase);
   const completedRef = useRef<readonly IncidentId[]>(completedIncidents);
@@ -343,5 +343,5 @@ export function GameCanvas({ phase, completedIncidents, onError }: { phase: Oper
     return () => { disposed = true; sceneRef.current = null; game?.destroy(true); };
   }, []);
 
-  return <div className="phaser-canvas" ref={containerRef} data-world-completed="" data-world-resolved-count="0" aria-label="도트 마을 구조 작전 애니메이션" role="img" />;
+  return <div className="phaser-canvas" ref={containerRef} style={{ transform: `translate3d(${panX}px, 0, 0)` }} data-map-pan-x={panX} data-world-completed="" data-world-resolved-count="0" aria-label="도트 마을 구조 작전 애니메이션" role="img" />;
 }

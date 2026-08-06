@@ -7,6 +7,7 @@ import { StageViewport } from "@/components/StageViewport";
 import { PixelPanicAudio, type PixelPanicSfx } from "@/lib/audio-engine";
 import { DIALOGUE_EVENTS, buildDialogueRequest, dialogueForAction, type DialogueEventDefinition } from "@/lib/dialogue-events";
 import { deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
+import { clampMapPanX, mapPanFromPointerDelta } from "@/lib/map-pan";
 import {
   ACTIONS,
   INCIDENTS,
@@ -39,6 +40,7 @@ type DialogueView = {
   source: "openai" | "fallback";
   pendingAction: { incidentId: IncidentId; actionId: ActionId };
 };
+type MapDragState = { pointerId: number; startClientX: number; startOffset: number; renderedWidth: number };
 
 declare global {
   interface Window {
@@ -95,7 +97,10 @@ export default function Home() {
   const [gameError, setGameError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [dialogue, setDialogue] = useState<DialogueView | null>(null);
+  const [mapPanX, setMapPanX] = useState(0);
+  const [mapDragging, setMapDragging] = useState(false);
   const dialogueAbortRef = useRef<AbortController | null>(null);
+  const mapDragRef = useRef<MapDragState | null>(null);
   const lastTickRef = useRef<number | null>(null);
   const resultTimerRef = useRef<number | null>(null);
   const audioRef = useRef<PixelPanicAudio | null>(null);
@@ -196,6 +201,26 @@ export default function Home() {
   }, [toast]);
 
   useEffect(() => {
+    if (screen !== "title" || !soundOn) return;
+    const audio = getAudio();
+    void audio.startTitleMusic();
+    let unlocked = false;
+    const unlockTitleMusic = () => {
+      if (unlocked) return;
+      unlocked = true;
+      void audio.startTitleMusic();
+      window.removeEventListener("pointerdown", unlockTitleMusic, true);
+      window.removeEventListener("keydown", unlockTitleMusic, true);
+    };
+    window.addEventListener("pointerdown", unlockTitleMusic, { capture: true, once: true });
+    window.addEventListener("keydown", unlockTitleMusic, { capture: true, once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockTitleMusic, true);
+      window.removeEventListener("keydown", unlockTitleMusic, true);
+    };
+  }, [getAudio, screen, soundOn]);
+
+  useEffect(() => {
     if (screen !== "play") return;
     const audio = getAudio();
     const resolved = getResolvedCount(game);
@@ -224,7 +249,7 @@ export default function Home() {
       completedIncidents: visual.completed,
       worldSnapshot: deriveWorldSnapshot(visual.completed),
       game,
-      audio: () => audioRef.current?.getDebugState() ?? { enabled: soundOn, musicRequested: false, musicPlaying: false, contextState: "uninitialized" },
+      audio: () => audioRef.current?.getDebugState() ?? { enabled: soundOn, requestedTrack: null, activeTrack: null, musicPlaying: false, contextState: "uninitialized" },
     };
     return () => { delete window.__PIXEL_PANIC_DEBUG__; };
   }, [game, soundOn, visual]);
@@ -241,6 +266,9 @@ export default function Home() {
     setPaused(false);
     setGameError(null);
     setToast(null);
+    setMapPanX(0);
+    setMapDragging(false);
+    mapDragRef.current = null;
     const initial = createInitialGame();
     previousWaveRef.current = initial.wave;
     previousResolvedRef.current = 0;
@@ -310,7 +338,8 @@ export default function Home() {
     audio.setEnabled(next);
     if (next) {
       audio.play("button");
-      if (screen === "play" && !paused && game.status === "playing") void audio.startMusic();
+      if (screen === "title") void audio.startTitleMusic();
+      else if (screen === "play" && !paused && game.status === "playing") void audio.startMusic();
     }
   }, [game.status, getAudio, paused, screen, soundOn]);
 
@@ -346,6 +375,36 @@ export default function Home() {
     setShowHelp(false);
   }, [playSound]);
 
+  const beginMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || paused || dialogue || showHelp) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    mapDragRef.current = { pointerId: event.pointerId, startClientX: event.clientX, startOffset: mapPanX, renderedWidth: bounds.width };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    setMapDragging(true);
+  }, [dialogue, mapPanX, paused, showHelp]);
+
+  const moveMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = mapDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setMapPanX(mapPanFromPointerDelta(drag.startOffset, event.clientX - drag.startClientX, drag.renderedWidth));
+    event.preventDefault();
+  }, []);
+
+  const endMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (mapDragRef.current?.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    mapDragRef.current = null;
+    setMapDragging(false);
+  }, []);
+
+  const moveMapWithKeyboard = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    const delta = event.key === "ArrowLeft" ? 64 : event.key === "ArrowRight" ? -64 : 0;
+    if (!delta) return;
+    event.preventDefault();
+    setMapPanX((current) => clampMapPanX(current + delta));
+  }, []);
+
   return (
     <main className="app-shell">
       <div className="rotate-overlay" role="status">
@@ -360,6 +419,7 @@ export default function Home() {
           <GameScreen
             game={game}
             visual={visual}
+            mapPanX={mapPanX}
             paused={paused}
             soundOn={soundOn}
             gameError={gameError}
@@ -377,7 +437,25 @@ export default function Home() {
 
         {game.briefingMs > 0 && screen === "play" && <WaveBriefing wave={game.wave} />}
         {game.comboBanner && screen === "play" && <div className="combo-banner"><small>PERFECT COMBO</small><strong>{game.comboBanner}</strong><span>+150</span></div>}
-        {dialogue && screen === "play" && <DialogueModal view={dialogue} onChoose={chooseDialogue} />}
+        {dialogue && screen === "play" && <DialogueModal view={dialogue} mapPanX={mapPanX} onChoose={chooseDialogue} />}
+        {screen === "play" && (
+          <>
+            <div
+              className={`map-drag-surface ${mapDragging ? "is-dragging" : ""}`}
+              role="region"
+              aria-label="지도 이동 영역. 마우스로 드래그하거나 좌우 방향키로 이동하세요."
+              tabIndex={0}
+              data-map-pan-x={mapPanX}
+              onPointerDown={beginMapDrag}
+              onPointerMove={moveMapDrag}
+              onPointerUp={endMapDrag}
+              onPointerCancel={endMapDrag}
+              onLostPointerCapture={() => { mapDragRef.current = null; setMapDragging(false); }}
+              onKeyDown={moveMapWithKeyboard}
+            />
+            <div className="map-pan-hint" aria-hidden="true"><span>↔</span> 지도를 드래그해 탐색</div>
+          </>
+        )}
         {paused && screen === "play" && (
           <Modal title="작전 일시정지" onClose={resumeGame}>
             <p>모든 사고와 로봇 타이머가 멈췄습니다.</p>
@@ -386,7 +464,7 @@ export default function Home() {
         )}
         {showHelp && (
           <Modal title="클릭 구조 매뉴얼" onClose={closeHelp}>
-            <ol className="how-to-list"><li><b>1</b><span>지도나 왼쪽 목록에서 사고를 클릭합니다.</span></li><li><b>2</b><span>현장에 맞는 구조 로봇을 클릭합니다.</span></li><li><b>3</b><span>행동 순서를 조합해 콤보와 확산 차단을 노립니다.</span></li></ol>
+            <ol className="how-to-list"><li><b>1</b><span>지도 빈 공간을 좌우로 드래그해 가려진 지역을 살펴봅니다.</span></li><li><b>2</b><span>지도나 왼쪽 목록에서 사고를 클릭합니다.</span></li><li><b>3</b><span>현장에 맞는 구조 로봇을 클릭합니다.</span></li><li><b>4</b><span>행동 순서를 조합해 콤보와 확산 차단을 노립니다.</span></li></ol>
             <PixelButton onClick={() => { closeHelp(); if (screen !== "play") startGame(); }}>확인</PixelButton>
           </Modal>
         )}
@@ -395,9 +473,10 @@ export default function Home() {
   );
 }
 
-function GameScreen({ game, visual, paused, soundOn, gameError, toast, onIncident, onRobot, onAction, onPause, onSound, onHelp, onGameError }: {
+function GameScreen({ game, visual, mapPanX, paused, soundOn, gameError, toast, onIncident, onRobot, onAction, onPause, onSound, onHelp, onGameError }: {
   game: RescueGameState;
   visual: { phase: OperationPhase; completed: LegacyIncidentId[] };
+  mapPanX: number;
   paused: boolean;
   soundOn: boolean;
   gameError: string | null;
@@ -422,7 +501,7 @@ function GameScreen({ game, visual, paused, soundOn, gameError, toast, onInciden
 
   return (
     <section className="game-screen" aria-label="PIXEL PANIC 클릭 구조 작전" data-wave={game.wave} data-status={game.status} data-resolved={resolvedCount}>
-      <GameCanvas phase={visual.phase} completedIncidents={visual.completed} onError={onGameError} />
+      <GameCanvas phase={visual.phase} completedIncidents={visual.completed} panX={mapPanX} onError={onGameError} />
       <header className="top-hud pixel-panel">
         <div className="hud-brand"><img src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" /><span><strong>PIXEL PANIC</strong><small>CLICK RESCUE OPS</small></span></div>
         <HudStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} emphasized />
@@ -452,7 +531,7 @@ function GameScreen({ game, visual, paused, soundOn, gameError, toast, onInciden
         </div>
       </aside>
 
-      <div className="map-hotspots" aria-label="사고 지도">
+      <div className="map-hotspots" style={{ transform: `translate3d(${mapPanX}px, 0, 0)` }} aria-label="사고 지도" data-map-pan-x={mapPanX}>
         {visible.filter((incident) => !["resolved", "contained"].includes(game.incidents[incident.id].status)).map((incident) => {
           const runtime = game.incidents[incident.id];
           return (
@@ -514,17 +593,35 @@ function GameScreen({ game, visual, paused, soundOn, gameError, toast, onInciden
   );
 }
 
-function DialogueModal({ view, onChoose }: { view: DialogueView; onChoose: (choiceId: string) => void }) {
+function DialogueModal({ view, mapPanX, onChoose }: { view: DialogueView; mapPanX: number; onChoose: (choiceId: string) => void }) {
   const robot = view.definition.speaker === "주민" ? "buddy" : view.definition.speaker.toLowerCase();
-  const [incidentX, incidentY] = INCIDENTS[view.pendingAction.incidentId].mapPosition;
-  const placeRight = incidentX < 640;
-  const left = Math.max(278, Math.min(378, placeRight ? incidentX + 60 : incidentX - 580));
-  const top = Math.max(80, Math.min(342, incidentY - 110));
+  const [baseIncidentX, incidentY] = INCIDENTS[view.pendingAction.incidentId].mapPosition;
+  const incidentX = baseIncidentX + mapPanX;
+  const leftSpace = incidentX - 256;
+  const rightSpace = 984 - incidentX;
+  let pointerSide: "left" | "right" | "top" | "bottom";
+  let left: number;
+  let top: number;
+  if (rightSpace >= 580) {
+    pointerSide = "left";
+    left = incidentX + 60;
+    top = Math.max(80, Math.min(342, incidentY - 110));
+  } else if (leftSpace >= 580) {
+    pointerSide = "right";
+    left = incidentX - 580;
+    top = Math.max(80, Math.min(342, incidentY - 110));
+  } else {
+    const placeBelow = incidentY + 305 <= 594;
+    pointerSide = placeBelow ? "top" : "bottom";
+    left = Math.max(278, Math.min(440, incidentX - 260));
+    top = placeBelow ? incidentY + 55 : Math.max(80, incidentY - 305);
+  }
   const pointerY = Math.max(42, Math.min(190, incidentY - top - 10));
-  const position = { left, top, "--dialogue-pointer-y": `${pointerY}px` } as React.CSSProperties;
+  const pointerX = Math.max(42, Math.min(478, incidentX - left));
+  const position = { left, top, "--dialogue-pointer-y": `${pointerY}px`, "--dialogue-pointer-x": `${pointerX}px` } as React.CSSProperties;
   return (
     <div className="modal-backdrop dialogue-backdrop" role="presentation">
-      <section className={`dialogue-card pixel-panel pointer-${placeRight ? "left" : "right"}`} style={position} role="dialog" aria-modal="true" aria-labelledby="dialogue-title" data-incident={view.pendingAction.incidentId}>
+      <section className={`dialogue-card pixel-panel pointer-${pointerSide}`} style={position} role="dialog" aria-modal="true" aria-labelledby="dialogue-title" data-incident={view.pendingAction.incidentId}>
         <img src={`${ASSET}/ui/portraits/pp_ui_portrait_${robot}_ready.png`} alt="" />
         <div className="dialogue-copy"><span><b>{view.definition.speaker}</b><em className={view.source}>{view.source === "openai" ? "GPT LIVE" : "LOCAL SAFE"}</em></span><h2 id="dialogue-title">{view.definition.title}</h2><p>{view.text}</p></div>
         <div className="dialogue-choices">{view.definition.choices.map((choice) => <button key={choice.id} onClick={() => onChoose(choice.id)}>{choice.label}</button>)}</div>

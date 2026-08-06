@@ -1,4 +1,15 @@
 export type PixelPanicSfx = "button" | "select" | "dialogue" | "dispatch" | "resolve" | "combo" | "wave" | "success" | "failure";
+export type PixelPanicMusicTrack = "title" | "mission";
+
+export const TITLE_BGM_MELODY = [
+  72, null, 76, 79, 81, null, 79, 76,
+  74, null, 77, 81, 79, null, 76, 72,
+  67, 72, 74, 76, 79, 76, 74, null,
+  72, null, 76, 79, 83, 81, 79, null,
+] as const;
+
+export const TITLE_BGM_BASS = [48, 48, 45, 45, 41, 43, 45, 47] as const;
+export const TITLE_BGM_CHORDS = [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]] as const;
 
 export const BGM_MELODY = [
   76, null, 79, 81, 79, null, 76, 72,
@@ -38,7 +49,8 @@ export class PixelPanicAudio {
   private nextStepTime = 0;
   private musicStep = 0;
   private enabled = true;
-  private musicRequested = false;
+  private requestedTrack: PixelPanicMusicTrack | null = null;
+  private activeTrack: PixelPanicMusicTrack | null = null;
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
@@ -48,12 +60,17 @@ export class PixelPanicAudio {
       return;
     }
     if (this.context) void this.context.resume();
-    if (this.musicRequested) void this.startMusic();
+    if (this.requestedTrack) void this.startMusic(this.requestedTrack);
   }
 
-  async startMusic(): Promise<void> {
-    this.musicRequested = true;
-    if (!this.enabled || this.musicTimer !== null) return;
+  startTitleMusic(): Promise<void> {
+    return this.startMusic("title");
+  }
+
+  async startMusic(track: PixelPanicMusicTrack = "mission"): Promise<void> {
+    this.requestedTrack = track;
+    if (!this.enabled || this.musicTimer !== null && this.activeTrack === track) return;
+    if (this.musicTimer !== null) this.stopMusic(true);
     let context: AudioContext;
     try {
       context = this.ensureContext();
@@ -61,7 +78,8 @@ export class PixelPanicAudio {
     } catch {
       return;
     }
-    if (!this.enabled || !this.musicRequested || this.musicTimer !== null) return;
+    if (!this.enabled || this.requestedTrack !== track || this.musicTimer !== null) return;
+    this.activeTrack = track;
     this.musicStep = 0;
     this.nextStepTime = context.currentTime + 0.06;
     this.scheduleMusic();
@@ -69,7 +87,8 @@ export class PixelPanicAudio {
   }
 
   stopMusic(preserveIntent = false): void {
-    if (!preserveIntent) this.musicRequested = false;
+    if (!preserveIntent) this.requestedTrack = null;
+    this.activeTrack = null;
     if (this.musicTimer !== null) window.clearInterval(this.musicTimer);
     this.musicTimer = null;
     for (const source of this.musicSources) {
@@ -102,10 +121,11 @@ export class PixelPanicAudio {
     if (effect === "failure") this.sweep(start, 120, 38, 0.8, 0.15);
   }
 
-  getDebugState(): { enabled: boolean; musicRequested: boolean; musicPlaying: boolean; contextState: AudioContextState | "uninitialized" } {
+  getDebugState(): { enabled: boolean; requestedTrack: PixelPanicMusicTrack | null; activeTrack: PixelPanicMusicTrack | null; musicPlaying: boolean; contextState: AudioContextState | "uninitialized" } {
     return {
       enabled: this.enabled,
-      musicRequested: this.musicRequested,
+      requestedTrack: this.requestedTrack,
+      activeTrack: this.activeTrack,
       musicPlaying: this.musicTimer !== null,
       contextState: this.context?.state ?? "uninitialized",
     };
@@ -143,25 +163,30 @@ export class PixelPanicAudio {
 
   private scheduleMusic(): void {
     const context = this.context;
-    if (!context || !this.musicGain || !this.enabled) return;
-    const stepDuration = 60 / 112 / 4;
+    const track = this.activeTrack;
+    if (!context || !this.musicGain || !this.enabled || !track) return;
+    const title = track === "title";
+    const melodyPattern = title ? TITLE_BGM_MELODY : BGM_MELODY;
+    const bassPattern = title ? TITLE_BGM_BASS : BGM_BASS;
+    const chordPattern = title ? TITLE_BGM_CHORDS : BGM_CHORDS;
+    const stepDuration = 60 / (title ? 96 : 112) / 4;
     while (this.nextStepTime < context.currentTime + 0.28) {
-      const step = this.musicStep % BGM_MELODY.length;
-      const melody = BGM_MELODY[step];
-      if (melody !== null) this.tone(melody, this.nextStepTime, stepDuration * 0.78, "square", 0.2, true);
+      const step = this.musicStep % melodyPattern.length;
+      const melody = melodyPattern[step];
+      if (melody !== null) this.tone(melody, this.nextStepTime, stepDuration * (title ? 0.86 : 0.78), "square", title ? 0.15 : 0.2, true);
       if (step % 4 === 0) {
-        const bass = BGM_BASS[Math.floor(step / 4) % BGM_BASS.length];
-        this.tone(bass, this.nextStepTime, stepDuration * 3.35, "triangle", 0.28, true);
+        const bass = bassPattern[Math.floor(step / 4) % bassPattern.length];
+        this.tone(bass, this.nextStepTime, stepDuration * 3.35, "triangle", title ? 0.2 : 0.28, true);
       }
       if (step % 2 === 0) {
-        const chord = BGM_CHORDS[Math.floor(step / 8) % BGM_CHORDS.length];
+        const chord = chordPattern[Math.floor(step / 8) % chordPattern.length];
         const arpNote = chord[Math.floor(step / 2) % chord.length] + 12;
-        this.tone(arpNote, this.nextStepTime, stepDuration * 0.42, "square", 0.08, true);
+        this.tone(arpNote, this.nextStepTime, stepDuration * 0.42, "square", title ? 0.055 : 0.08, true);
       }
-      if (step % 8 === 0) this.sweep(this.nextStepTime, 110, 46, 0.11, 0.2, true);
-      if (step % 4 === 2) this.tone(102, this.nextStepTime, 0.025, "square", 0.035, true);
+      if (step % 8 === 0) this.sweep(this.nextStepTime, title ? 92 : 110, title ? 55 : 46, 0.11, title ? 0.1 : 0.2, true);
+      if (!title && step % 4 === 2) this.tone(102, this.nextStepTime, 0.025, "square", 0.035, true);
       this.nextStepTime += stepDuration;
-      this.musicStep = (this.musicStep + 1) % BGM_MELODY.length;
+      this.musicStep = (this.musicStep + 1) % melodyPattern.length;
     }
   }
 
