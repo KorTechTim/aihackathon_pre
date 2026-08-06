@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "mapOrigin": [
+    0,
+    0
+  ],
+  "runtimeHudOffsetY": 64,
+  "actors": [
+    {
+      "id": "aqua",
+      "tile": [
+        5,
+        13
+      ],
+      "pixel": [
+        176,
+        432
+      ]
+    },
+    {
+      "id": "fix",
+      "tile": [
+        6,
+        13
+      ],
+      "pixel": [
+        208,
+        432
+      ]
+    },
+    {
+      "id": "buddy",
+      "tile": [
+        7,
+        13
+      ],
+      "pixel": [
+        240,
+        432
+      ]
+    }
+  ],
+  "incidents": [
+    {
+      "name": "bakery_fire",
+      "x": 6,
+      "y": 4,
+      "properties": {
+        "incident_id": "fire",
+        "target_type": "building",
+        "state": "active",
+        "interaction_radius": 3,
+        "interaction_tile": [
+          10,
+          5
+        ],
+        "marker_pixel": [
+          300,
+          144
+        ]
+      }
+    },
+    {
+      "name": "rooftop_cat",
+      "x": 15,
+      "y": 3,
+      "properties": {
+        "incident_id": "cat",
+        "target_type": "animal",
+        "state": "active",
+        "interaction_radius": 3,
+        "interaction_tile": [
+          19,
+          5
+        ],
+        "marker_pixel": [
+          496,
+          112
+        ]
+      }
+    },
+    {
+      "name": "generator_failure",
+      "x": 35,
+      "y": 4,
+      "properties": {
+        "incident_id": "generator",
+        "target_type": "machine",
+        "state": "active",
+        "interaction_radius": 3,
+        "interaction_tile": [
+          31,
+          5
+        ],
+        "marker_pixel": [
+          992,
+          144
+        ],
+        "requires": "bridge_repaired"
+      }
+    },
+    {
+      "name": "broken_bridge",
+      "x": 26,
+      "y": 8,
+      "properties": {
+        "incident_id": "bridge",
+        "target_type": "structure",
+        "state": "active",
+        "interaction_radius": 3,
+        "interaction_tile": [
+          24,
+          8
+        ],
+        "marker_pixel": [
+          848,
+          272
+        ]
+      }
+    }
+  ],
+  "fx_slots": {
+    "fire": [
+      [
+        6,
+        3
+      ],
+      [
+        7,
+        4
+      ]
+    ],
+    "cat_help": [
+      [
+        15,
+        2
+      ]
+    ],
+    "generator_sparks": [
+      [
+        35,
+        4
+      ]
+    ],
+    "bridge_dust": [
+      [
+        26,
+        8
+      ]
+    ]
+  }
+}

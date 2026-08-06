@@ -2,7 +2,9 @@
 
 작성일: 2026-08-06  
 범위: 비주얼 기준·UI 키트·화면 골격  
-상태: **P0 완료 / Phase 2 진행 가능**
+상태: **기능·규격 P0 완료 / 시각 품질 재작업 필요**
+
+> 2026-08-06 재평가: 화면 골격, 상태 전환, 규격과 자동 검사는 통과했지만 실제 UI 그래픽은 승인된 스타일 보드의 완성도에 미달한다. Phase 1을 시각적으로 완성된 상태로 간주하지 않으며 별도 재디자인이 필요하다.
 
 ## 1. 구현 결과
 
@@ -104,18 +106,18 @@ Next.js + React + Phaser 3 기반의 1280×720 게임 셸을 구축했다. 아�
 
 ## 5. 남은 플레이스홀더와 교체 위치
 
-Phase 1 운영 원칙에 따라 월드와 실제 캐릭터 애니메이션은 명시적 플레이스홀더다.
+Phase 1 작성 당시 월드와 실제 캐릭터 애니메이션은 명시적 플레이스홀더였다. 월드와 사건 마커는 Phase 2에서 교체됐고, 로봇 플레이스홀더는 Phase 3에서 교체한다.
 
 | 플레이스홀더 | 현재 사용 위치 | 교체 Phase |
 |---|---|---|
-| `pp_placeholder_map` | Phaser 장면 `(0, 64)`, 1280×544 맵 영역 | Phase 2 타일맵 |
+| `pp_placeholder_map` | Phase 2의 `pp_stage_01_preview`로 교체 완료 | 완료 |
 | `pp_placeholder_robot_aqua` | 구조 본부 `(340, 530)` | Phase 3 AQUA 스프라이트 |
 | `pp_placeholder_robot_fix` | 구조 본부 `(404, 530)` | Phase 3 FIX 스프라이트 |
 | `pp_placeholder_robot_buddy` | 구조 본부 `(468, 530)` | Phase 3 BUDDY 스프라이트 |
-| `pp_placeholder_incident_fire` | 빵집 `(300, 206)` | Phase 2 건물/마커 + Phase 3 화재 FX |
-| `pp_placeholder_incident_bridge` | 교량 `(816, 360)` | Phase 2 교량 상태 에셋 |
-| `pp_placeholder_incident_cat` | 고양이 집 `(585, 164)` | Phase 2 지붕 + Phase 3 고양이 |
-| `pp_placeholder_incident_generator` | 발전소 `(946, 188)` | Phase 2 발전기 + Phase 3 전기 FX |
+| `pp_placeholder_incident_fire` | Phase 2 마커로 교체 완료 | Phase 3 화재 FX 남음 |
+| `pp_placeholder_incident_bridge` | Phase 2 마커·교량 상태 에셋으로 교체 완료 | 완료 |
+| `pp_placeholder_incident_cat` | Phase 2 마커·지붕 에셋으로 교체 완료 | Phase 3 고양이 남음 |
+| `pp_placeholder_incident_generator` | Phase 2 마커·발전기 상태 에셋으로 교체 완료 | Phase 3 전기 FX 남음 |
 
 플레이스홀더는 지금 단계에서 의도적으로 존재하며, Phase 2와 Phase 3 완료 검사에서 모두 제거해야 한다.
 
