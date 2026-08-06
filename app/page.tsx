@@ -8,7 +8,7 @@ import { PixelPanicAudio, type PixelPanicSfx } from "@/lib/audio-engine";
 import { DIALOGUE_EVENTS, buildDialogueRequest, dialogueForAction, type DialogueEventDefinition } from "@/lib/dialogue-events";
 import { deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
 import { clampMapPanX, mapPanFromPointerDelta, revealMapAnchor } from "@/lib/map-pan";
-import { NPC_DIALOGUES, NPC_DIALOGUE_IDS, buildNpcDialogueRequest, type NpcDialogueId } from "@/lib/npc-dialogue";
+import { NPC_DIALOGUES, NPC_DIALOGUE_IDS, buildNpcDialogueRequest, fallbackNpcDialogue, isNpcDialogueExcluded, type NpcDialogueId } from "@/lib/npc-dialogue";
 import {
   buildSafetyQuizRequest,
   fallbackSafetyQuiz,
@@ -18,7 +18,7 @@ import {
   type SafetyQuizOptionId,
   type SafetyQuizResponse,
 } from "@/lib/safety-quiz";
-import { getStageMap, stageMapScreenY, type StageMapDefinition, type StageMapId, type StagePoint } from "@/lib/stage-maps";
+import { getIncidentPopupPosition, getStageMap, stageMapScreenY, type StageMapDefinition, type StageMapId, type StagePoint } from "@/lib/stage-maps";
 import {
   ACTIONS,
   INCIDENTS,
@@ -141,6 +141,7 @@ export default function Home() {
   const askedQuizQuestionsRef = useRef<string[]>([]);
   const quizDispatchTimerRef = useRef<number | null>(null);
   const npcDialogueAbortRef = useRef<AbortController | null>(null);
+  const npcDialogueHistoryRef = useRef<string[]>([]);
   const npcSpeechTimerRef = useRef<number | null>(null);
   const mapDragRef = useRef<MapDragState | null>(null);
   const lastTickRef = useRef<number | null>(null);
@@ -245,7 +246,7 @@ export default function Home() {
 
   useEffect(() => {
     if (screen !== "play" || !game.selectedIncidentId) return;
-    const anchorX = stageMap.incidentPositions[game.selectedIncidentId][0];
+    const anchorX = getIncidentPopupPosition(stageMap, game.selectedIncidentId)[0];
     setMapPanX((current) => revealMapAnchor(current, anchorX));
   }, [game.selectedIncidentId, screen, stageMap]);
 
@@ -335,6 +336,7 @@ export default function Home() {
     setMapPanX(0);
     setMapDragging(false);
     askedQuizQuestionsRef.current = [];
+    npcDialogueHistoryRef.current = [];
     mapDragRef.current = null;
     const initial = createInitialGame();
     previousWaveRef.current = initial.wave;
@@ -378,6 +380,9 @@ export default function Home() {
   const talkToNpc = useCallback((npcId: NpcDialogueId) => {
     if (paused || dialogue || safetyQuiz || showHelp) return;
     const npc = NPC_DIALOGUES[npcId];
+    const excludedDialogues = [...npcDialogueHistoryRef.current];
+    const dialogueSequence = excludedDialogues.length + 1;
+    const localFallback = fallbackNpcDialogue(npcId, excludedDialogues, dialogueSequence);
     setActionPopupOpen(false);
     playSound("dialogue");
     npcDialogueAbortRef.current?.abort();
@@ -388,7 +393,12 @@ export default function Home() {
 
     const showSpeech = (text: string, source: "openai" | "fallback") => {
       if (npcDialogueAbortRef.current !== controller) return;
-      setNpcSpeech({ npcId, text, source, loading: false });
+      const latestExcludedDialogues = npcDialogueHistoryRef.current;
+      const repeated = isNpcDialogueExcluded(text, latestExcludedDialogues);
+      const uniqueText = repeated ? fallbackNpcDialogue(npcId, latestExcludedDialogues, dialogueSequence) : text;
+      if (isNpcDialogueExcluded(uniqueText, latestExcludedDialogues)) return;
+      npcDialogueHistoryRef.current = [...latestExcludedDialogues, uniqueText];
+      setNpcSpeech({ npcId, text: uniqueText, source: repeated ? "fallback" : source, loading: false });
       npcSpeechTimerRef.current = window.setTimeout(() => {
         setNpcSpeech((current) => current?.npcId === npcId ? null : current);
       }, 7_000);
@@ -397,16 +407,16 @@ export default function Home() {
     void fetch("/api/dialogue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildNpcDialogueRequest(npc, game)),
+      body: JSON.stringify(buildNpcDialogueRequest(npc, game, { dialogueSequence, excludedDialogues })),
       signal: controller.signal,
     }).then(async (response) => {
-      if (!response.ok) return showSpeech(npc.fallbackDialogue, "fallback");
+      if (!response.ok) return showSpeech(localFallback, "fallback");
       const data = await response.json() as { dialogue?: unknown; source?: unknown };
-      if (typeof data.dialogue !== "string" || !data.dialogue.trim() || data.dialogue.length > 160 || data.source !== "openai" && data.source !== "fallback") {
-        return showSpeech(npc.fallbackDialogue, "fallback");
+      if (typeof data.dialogue !== "string" || !data.dialogue.trim() || data.dialogue.length > 160 || isNpcDialogueExcluded(data.dialogue, excludedDialogues) || data.source !== "openai" && data.source !== "fallback") {
+        return showSpeech(localFallback, "fallback");
       }
       showSpeech(data.dialogue, data.source);
-    }).catch(() => showSpeech(npc.fallbackDialogue, "fallback")).finally(() => window.clearTimeout(timeout));
+    }).catch(() => showSpeech(localFallback, "fallback")).finally(() => window.clearTimeout(timeout));
   }, [dialogue, game, paused, playSound, safetyQuiz, showHelp]);
 
   const closeNpcSpeech = useCallback(() => {
@@ -768,11 +778,12 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
       <div className="map-hotspots" style={{ transform: `translate3d(${mapPanX}px, 0, 0)` }} aria-label="사고 지도" data-map-pan-x={mapPanX}>
         {visible.filter((incident) => !["resolved", "contained"].includes(game.incidents[incident.id].status)).map((incident) => {
           const runtime = game.incidents[incident.id];
+          const popupPosition = getIncidentPopupPosition(stageMap, incident.id);
           return (
             <button
               key={incident.id}
               className={`incident-pin ${runtime.status} ${game.selectedIncidentId === incident.id ? "selected" : ""}`}
-              style={{ left: stageMap.incidentPositions[incident.id][0], top: stageMapScreenY(stageMap.incidentPositions[incident.id][1]) }}
+              style={{ left: popupPosition[0], top: stageMapScreenY(popupPosition[1]) }}
               data-incident-id={incident.id}
               onClick={() => onIncident(incident.id)}
               aria-label={`${incident.label}, 위험도 ${runtime.severity}`}

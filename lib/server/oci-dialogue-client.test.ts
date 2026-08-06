@@ -20,6 +20,8 @@ const npcBody = {
   situation: "npc_duri",
   facts: { npcName: "두리", npcRole: "공원 관리인", characterTraits: "지형 변화를 빠르게 발견함", wave: 2 },
   choiceIds: [],
+  dialogueSequence: 1,
+  excludedDialogues: [],
   language: "ko",
 } as const;
 
@@ -51,6 +53,19 @@ test("NPC 대화는 선택지 없이 허용하고 캐릭터별 폴백을 사용�
     degradedReason: "OCI_NOT_CONFIGURED",
     requestId: "npc-fallback",
   });
+});
+
+test("OCI가 NPC의 이전 대사를 반복하면 새 로컬 대사로 교체한다", async () => {
+  const previous = NPC_DIALOGUES.npc_duri.fallbackDialogue;
+  const response = await handleDialogueProxyRequest(request({ ...npcBody, dialogueSequence: 2, excludedDialogues: [previous] }), {
+    config,
+    createRequestId: () => "npc-duplicate",
+    fetchImpl: async () => Response.json({ dialogue: previous, source: "openai" }),
+  });
+  const result = await response.json() as { dialogue: string; source: string; degradedReason: string };
+  assert.notEqual(result.dialogue, previous);
+  assert.equal(result.source, "fallback");
+  assert.equal(result.degradedReason, "OCI_INVALID_RESPONSE");
 });
 
 test("잘못된 요청은 OCI 호출 전 400으로 거부한다", async () => {

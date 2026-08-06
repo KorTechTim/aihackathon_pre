@@ -27,6 +27,14 @@ export function stageMapScreenY(y: number): number {
   return Math.round(STAGE_MAP_TOP + (y - STAGE_MAP_TOP) * STAGE_MAP_SCALE_Y);
 }
 
+export function getIncidentPopupPosition(map: StageMapDefinition, incidentId: IncidentId): StagePoint {
+  if (incidentId === "electrical_short") {
+    const [generatorX, generatorY] = map.legacyTargets.generator;
+    return [generatorX + 22, generatorY - 8];
+  }
+  return map.incidentPositions[incidentId];
+}
+
 const CLASSIC_ROBOT_STARTS = { aqua: [176, 496], fix: [208, 496], buddy: [240, 496] } as const;
 const CLASSIC_NPCS = {
   npc_boram: [400, 360], npc_minsu: [546, 250], npc_hana: [720, 450], npc_duri: [930, 430],

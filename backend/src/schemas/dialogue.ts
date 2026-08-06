@@ -1,6 +1,8 @@
 export const EVENT_DIALOGUE_SITUATIONS = ["hydrant_broken", "high_water_bridge", "bakery_gas_info", "buddy_priority"] as const;
 export const NPC_DIALOGUE_SITUATIONS = ["npc_boram", "npc_minsu", "npc_hana", "npc_duri"] as const;
 export const DIALOGUE_SITUATIONS = [...EVENT_DIALOGUE_SITUATIONS, ...NPC_DIALOGUE_SITUATIONS] as const;
+export const MAX_EXCLUDED_NPC_DIALOGUES = 24;
+export const MAX_NPC_DIALOGUE_SEQUENCE = 10_000;
 export type DialogueSituation = (typeof DIALOGUE_SITUATIONS)[number];
 
 export type DialogueInput = {
@@ -9,6 +11,8 @@ export type DialogueInput = {
   situation: DialogueSituation;
   facts: Record<string, string | number | boolean>;
   choiceIds: string[];
+  dialogueSequence?: number;
+  excludedDialogues?: string[];
   language: "ko";
 };
 
@@ -47,6 +51,15 @@ export function normalizeDialogue(value: unknown): string | null {
   const normalized = dialogue.replace(/\s+/g, " ").trim();
   if (!normalized || normalized.length > 160 || /[`*_#\[\]<>]/.test(normalized)) return null;
   return normalized;
+}
+
+export function dialogueTextKey(dialogue: string): string {
+  return dialogue.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+export function isDialogueExcluded(dialogue: string, excludedDialogues: readonly string[]): boolean {
+  const key = dialogueTextKey(dialogue);
+  return key.length > 0 && excludedDialogues.some((excluded) => dialogueTextKey(excluded) === key);
 }
 
 export function fallbackDialogue(situation: DialogueSituation, degradedReason: NonNullable<DialogueResult["degradedReason"]>): DialogueResult {

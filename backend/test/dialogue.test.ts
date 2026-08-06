@@ -24,6 +24,8 @@ const npcPayload = {
   situation: "npc_duri",
   facts: { npcName: "두리", npcRole: "공원 관리인", characterTraits: "지형 변화를 빠르게 발견함", wave: 2 },
   choiceIds: [],
+  dialogueSequence: 1,
+  excludedDialogues: [],
   language: "ko",
 };
 

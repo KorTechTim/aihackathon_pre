@@ -8,6 +8,7 @@ import {
   STAGE_MAP_SOURCE_HEIGHT,
   STAGE_MAP_TOP,
   STAGE_MAP_VIEWPORT_HEIGHT,
+  getIncidentPopupPosition,
   getStageMap,
   stageMapScreenY,
 } from "./stage-maps";
@@ -45,6 +46,14 @@ test("모든 맵은 NPC 4명과 사고 10개의 전용 좌표를 제공한다", 
     for (const incidentId of INCIDENT_IDS) {
       assert.deepEqual(map.routes?.[incidentId]?.at(-1), map.incidentPositions[incidentId], `${map.id}: ${incidentId} route target`);
     }
+  }
+});
+
+test("합선 팝업은 모든 맵에서 전기 장애 이펙트 좌표를 가리킨다", () => {
+  for (const map of STAGE_MAPS) {
+    const [generatorX, generatorY] = map.legacyTargets.generator;
+    assert.deepEqual(getIncidentPopupPosition(map, "electrical_short"), [generatorX + 22, generatorY - 8], map.id);
+    assert.deepEqual(getIncidentPopupPosition(map, "bakery_fire"), map.incidentPositions.bakery_fire, map.id);
   }
 });
 

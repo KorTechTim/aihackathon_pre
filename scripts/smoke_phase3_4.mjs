@@ -23,7 +23,11 @@ await titlePage.close();
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = collectPageErrors(page);
 const quizRequests = [];
-await page.route("**/api/dialogue", (route) => fulfillDialogue(route, "openai"));
+const dialogueRequests = [];
+await page.route("**/api/dialogue", (route) => {
+  dialogueRequests.push(route.request().postDataJSON());
+  return fulfillDialogue(route, "openai");
+});
 await page.route("**/api/quiz", (route) => {
   quizRequests.push(route.request().postDataJSON());
   return fulfillQuiz(route, "openai");
@@ -57,7 +61,7 @@ const dragBox = await dragSurface.boundingBox();
 assert.equal(Boolean(dragBox && dragBox.y === 66 && dragBox.height === 654), true);
 assert.equal(await dragSurface.evaluate((element) => getComputedStyle(element).cursor), "grab");
 const initialPanX = Number(await dragSurface.getAttribute("data-map-pan-x"));
-assert.equal(initialPanX, -208);
+assert.equal(initialPanX, -78);
 const dragStart = { x: dragBox.x + dragBox.width / 2, y: dragBox.y + dragBox.height / 2 };
 await page.mouse.move(dragStart.x, dragStart.y);
 await page.mouse.down();
@@ -78,7 +82,19 @@ await page.waitForFunction((start) => document.querySelector(".map-drag-surface"
 await page.locator('[data-npc-id="npc_duri"]').click();
 await page.locator('[data-npc-speech="npc_duri"]').waitFor({ state: "visible" });
 await page.waitForFunction(() => document.querySelector('[data-npc-speech="npc_duri"]')?.getAttribute("data-dialogue-source") === "openai");
-assert.match(await page.locator('[data-npc-speech="npc_duri"] p').innerText(), /강물|산책로/);
+const firstNpcDialogue = await page.locator('[data-npc-speech="npc_duri"] p').innerText();
+assert.match(firstNpcDialogue, /강물|산책로/);
+await page.getByRole("button", { name: "주민 말풍선 닫기" }).click();
+await page.locator('[data-npc-speech="npc_duri"]').waitFor({ state: "hidden" });
+await page.locator('[data-npc-id="npc_duri"]').click();
+await page.locator('[data-npc-speech="npc_duri"]').waitFor({ state: "visible" });
+await page.waitForFunction(() => document.querySelector('[data-npc-speech="npc_duri"]')?.getAttribute("data-dialogue-source") === "fallback");
+const secondNpcDialogue = await page.locator('[data-npc-speech="npc_duri"] p').innerText();
+assert.notEqual(secondNpcDialogue, firstNpcDialogue);
+assert.deepEqual(dialogueRequests.slice(0, 2).map(({ dialogueSequence, excludedDialogues }) => ({ dialogueSequence, excludedDialogues })), [
+  { dialogueSequence: 1, excludedDialogues: [] },
+  { dialogueSequence: 2, excludedDialogues: [firstNpcDialogue] },
+]);
 await page.getByRole("button", { name: "주민 말풍선 닫기" }).click();
 await page.locator('[data-npc-speech="npc_duri"]').waitFor({ state: "hidden" });
 

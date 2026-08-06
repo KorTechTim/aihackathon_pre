@@ -1,6 +1,8 @@
 import { INCIDENTS, WAVE_LABELS, formatGameTime, getResolvedCount, type RescueGameState } from "./rescue-engine";
 
 export const NPC_DIALOGUE_IDS = ["npc_boram", "npc_minsu", "npc_hana", "npc_duri"] as const;
+export const MAX_EXCLUDED_NPC_DIALOGUES = 24;
+export const MAX_NPC_DIALOGUE_SEQUENCE = 10_000;
 export type NpcDialogueId = (typeof NPC_DIALOGUE_IDS)[number];
 export type NpcSpriteId = "a" | "b" | "c" | "d";
 
@@ -58,7 +60,59 @@ export const NPC_DIALOGUES: Record<NpcDialogueId, NpcDialogueDefinition> = {
   },
 };
 
-export function buildNpcDialogueRequest(npc: NpcDialogueDefinition, state: RescueGameState) {
+const NPC_FALLBACK_DIALOGUES: Record<NpcDialogueId, readonly string[]> = {
+  npc_boram: [
+    NPC_DIALOGUES.npc_boram.fallbackDialogue,
+    "저쪽 골목은 제가 살펴봤어요. 이웃들이 당황하지 않도록 안전한 방향부터 알려줄게요!",
+    "빵집 주변은 제가 잘 알아요. 구조대가 지나갈 길을 비우고 주민들을 차분히 안내할게요!",
+    "걱정만 하고 있을 순 없죠. 도움이 필요한 이웃부터 찾아 구조대에 바로 알려드릴게요!",
+  ],
+  npc_minsu: [
+    NPC_DIALOGUES.npc_minsu.fallbackDialogue,
+    "젖은 배전함은 겉보기보다 위험합니다. 전원이 완전히 차단됐다는 확인 전에는 손대지 마세요.",
+    "설비 소리가 평소와 다릅니다. 진동과 타는 냄새가 나는 구역은 제가 표시해두겠습니다.",
+    "배수로와 전력선이 만나는 곳부터 점검해야 합니다. 안전거리 밖에서 상태를 계속 확인하겠습니다.",
+  ],
+  npc_hana: [
+    NPC_DIALOGUES.npc_hana.fallbackDialogue,
+    "서두르지 않아도 괜찮아요. 어린이와 어르신이 먼저 이동하도록 제가 곁에서 도울게요.",
+    "대피한 분들의 인원을 다시 확인하고 있어요. 가족과 떨어진 주민이 없는지 살펴보겠습니다.",
+    "안전한 곳에 도착할 때까지 안내 표지를 따라주세요. 제가 맨 뒤에서 모두를 확인할게요.",
+  ],
+  npc_duri: [
+    NPC_DIALOGUES.npc_duri.fallbackDialogue,
+    "물살과 바람 방향이 조금 바뀌었어요. 공원 안쪽 높은 길을 계속 확인해 알려드릴게요!",
+    "다리 아래 수위 표지가 빠르게 올라가고 있습니다. 낮은 산책로는 당분간 피해주세요.",
+    "나무와 울타리 상태를 살펴보니 북쪽 길이 가장 안정적이에요. 변화가 생기면 바로 알리겠습니다!",
+  ],
+};
+
+export function npcDialogueKey(dialogue: string): string {
+  return dialogue.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+export function isNpcDialogueExcluded(dialogue: string, excludedDialogues: readonly string[]): boolean {
+  const key = npcDialogueKey(dialogue);
+  return key.length > 0 && excludedDialogues.some((excluded) => npcDialogueKey(excluded) === key);
+}
+
+export function fallbackNpcDialogue(npcId: NpcDialogueId, excludedDialogues: readonly string[] = [], dialogueSequence = 1): string {
+  const candidates = NPC_FALLBACK_DIALOGUES[npcId];
+  const unused = candidates.find((dialogue) => !isNpcDialogueExcluded(dialogue, excludedDialogues));
+  if (unused) return unused;
+  return `${Math.max(1, Math.trunc(dialogueSequence))}번째 현장 보고: ${candidates[0]}`.slice(0, 120);
+}
+
+export function buildNpcDialogueRequest(
+  npc: NpcDialogueDefinition,
+  state: RescueGameState,
+  options: { dialogueSequence?: number; excludedDialogues?: readonly string[] } = {},
+) {
+  const dialogueSequence = Math.max(1, Math.trunc(options.dialogueSequence ?? 1));
+  const excludedDialogues = (options.excludedDialogues ?? [])
+    .map((dialogue) => dialogue.replace(/\s+/g, " ").trim())
+    .filter((dialogue) => dialogue.length >= 2 && dialogue.length <= 160)
+    .slice(-MAX_EXCLUDED_NPC_DIALOGUES);
   return {
     speaker: "주민" as const,
     personality: npc.personality,
@@ -75,6 +129,8 @@ export function buildNpcDialogueRequest(npc: NpcDialogueDefinition, state: Rescu
       selectedIncident: state.selectedIncidentId ? INCIDENTS[state.selectedIncidentId].label : "없음",
     },
     choiceIds: [] as string[],
+    dialogueSequence,
+    excludedDialogues,
     language: "ko" as const,
   };
 }
