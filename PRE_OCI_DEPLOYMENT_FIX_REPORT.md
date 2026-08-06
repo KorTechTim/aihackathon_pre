@@ -37,7 +37,7 @@ Phase 1~4 그래픽 에셋과 기존 비주얼 회귀 이미지는 수정하지 
 
 - clean dependency install: `npm ci`, `npm --prefix backend ci` 통과
 - bootstrap: 통과, Node 22.23.1 / Python 3.11 환경 확인
-- repository policy: 503개 경로 검사 통과
+- repository policy: 전체 추적 경로 검사 통과
 - typecheck: 프런트와 backend 통과
 - unit: 14개 통과
 - backend: 16개 통과
