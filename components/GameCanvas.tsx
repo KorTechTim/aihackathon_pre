@@ -1,32 +1,36 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { canComplete, deriveWorldSnapshot, type IncidentId, type RobotId } from "@/lib/game-state";
+import { canComplete, deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
 import { NPC_DIALOGUE_IDS } from "@/lib/npc-dialogue";
+import type { ActionId, IncidentId, RobotId } from "@/lib/rescue-engine";
 import { STAGE_MAPS, type StageMapDefinition } from "@/lib/stage-maps";
 
 export type OperationPhase = "idle" | "analyzing" | "preview" | "fire" | "bridge" | "cat" | "generator" | "complete";
+export type ActiveRobotMission = { robotId: RobotId; incidentId: IncidentId; actionId: ActionId };
 
 type StageSpawnData = { runtimeHudOffsetY: number };
 type CollisionData = { width: number; height: number; blocked: number[] };
 
 const ASSET = "/assets/pixel-panic";
 const ROBOTS: RobotId[] = ["aqua", "fix", "buddy"];
-const INCIDENTS: IncidentId[] = ["fire", "bridge", "cat", "generator"];
+const LEGACY_INCIDENTS: LegacyIncidentId[] = ["fire", "bridge", "cat", "generator"];
 
-export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onError }: { phase: OperationPhase; completedIncidents: readonly IncidentId[]; stageMap: StageMapDefinition; panX?: number; onError?: (message: string) => void }) {
+export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX = 0, onError }: { phase: OperationPhase; completedIncidents: readonly LegacyIncidentId[]; missions: readonly ActiveRobotMission[]; stageMap: StageMapDefinition; panX?: number; onError?: (message: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const phaseRef = useRef(phase);
-  const completedRef = useRef<readonly IncidentId[]>(completedIncidents);
+  const completedRef = useRef<readonly LegacyIncidentId[]>(completedIncidents);
+  const missionsRef = useRef<readonly ActiveRobotMission[]>(missions);
   const stageMapRef = useRef(stageMap);
   const errorRef = useRef(onError);
-  const sceneRef = useRef<{ setOperationState: (next: OperationPhase, completed: readonly IncidentId[]) => void; setStageMap: (next: StageMapDefinition) => void } | null>(null);
+  const sceneRef = useRef<{ setOperationState: (next: OperationPhase, completed: readonly LegacyIncidentId[], activeMissions: readonly ActiveRobotMission[]) => void; setStageMap: (next: StageMapDefinition) => void } | null>(null);
 
   useEffect(() => {
     phaseRef.current = phase;
     completedRef.current = completedIncidents;
-    sceneRef.current?.setOperationState(phase, completedIncidents);
-  }, [phase, completedIncidents]);
+    missionsRef.current = missions;
+    sceneRef.current?.setOperationState(phase, completedIncidents, missions);
+  }, [phase, completedIncidents, missions]);
   useEffect(() => {
     stageMapRef.current = stageMap;
     sceneRef.current?.setStageMap(stageMap);
@@ -44,10 +48,10 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
       class RescueScene extends Phaser.Scene {
         private robots = new Map<RobotId, Phaser.GameObjects.Sprite>();
         private shadows = new Map<RobotId, Phaser.GameObjects.Image>();
-        private markers = new Map<IncidentId, Phaser.GameObjects.Image>();
+        private markers = new Map<LegacyIncidentId, Phaser.GameObjects.Image>();
         private starts = new Map<RobotId, [number, number]>();
-        private targets = new Map<IncidentId, [number, number]>();
-        private markerTargets = new Map<IncidentId, [number, number]>();
+        private markerTargets = new Map<LegacyIncidentId, [number, number]>();
+        private missionSignatures = new Map<RobotId, string>();
         private residents: Phaser.GameObjects.Sprite[] = [];
         private cat?: Phaser.GameObjects.Sprite;
         private fire?: Phaser.GameObjects.Sprite;
@@ -66,7 +70,7 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
         private baseCollision?: CollisionData;
         private hudOffsetY = 64;
         private currentPhase: OperationPhase = "idle";
-        private completedSignature = "";
+        private completedSignature = "__uninitialized__";
         private stageBackground?: Phaser.GameObjects.Image;
         private activeMap: StageMapDefinition = stageMapRef.current;
 
@@ -103,7 +107,7 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
             ["electricity", "electric_arc", 48, 48], ["restore", "power_restore_burst", 64, 64], ["confetti", "confetti", 96, 96],
           ];
           for (const [key, file, width, height] of effects) this.load.spritesheet(key, `${ASSET}/fx/pp_fx_${file}.png`, { frameWidth: width, frameHeight: height });
-          for (const incident of INCIDENTS) this.load.image(`marker-${incident}`, `${ASSET}/world/incidents/pp_world_incident_marker_${incident}.png`);
+          for (const incident of LEGACY_INCIDENTS) this.load.image(`marker-${incident}`, `${ASSET}/world/incidents/pp_world_incident_marker_${incident}.png`);
         }
 
         create() {
@@ -132,9 +136,8 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
             this.shadows.set(robot, shadow);
           }
 
-          for (const incident of INCIDENTS) {
+          for (const incident of LEGACY_INCIDENTS) {
             const position: [number, number] = [...this.activeMap.legacyTargets[incident]];
-            this.targets.set(incident, position);
             this.markerTargets.set(incident, position);
             const marker = this.add.image(position[0], position[1], `marker-${incident}`).setScale(2).setDepth(15).setVisible(false);
             this.markers.set(incident, marker);
@@ -164,7 +167,7 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
           });
           this.positionWorldElements();
           sceneRef.current = this;
-          this.setOperationState(phaseRef.current, completedRef.current);
+          this.setOperationState(phaseRef.current, completedRef.current, missionsRef.current);
         }
 
         private createAnimations() {
@@ -193,9 +196,8 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
           this.stageBackground.setTexture(`stage-${next.id}`).setAlpha(0.42);
           this.tweens.add({ targets: this.stageBackground, alpha: 1, duration: 260, ease: "Quad.easeOut" });
           for (const robot of ROBOTS) this.starts.set(robot, [...next.robotStarts[robot]]);
-          for (const incident of INCIDENTS) {
+          for (const incident of LEGACY_INCIDENTS) {
             const position: [number, number] = [...next.legacyTargets[incident]];
-            this.targets.set(incident, position);
             this.markerTargets.set(incident, position);
             this.markers.get(incident)?.setPosition(position[0], position[1]);
           }
@@ -203,9 +205,10 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
           this.positionWorldElements();
           const phase = this.currentPhase;
           this.currentPhase = "idle";
-          this.completedSignature = "";
+          this.completedSignature = "__uninitialized__";
+          this.missionSignatures.clear();
           this.resetActorsToBase();
-          this.setOperationState(phase, completedRef.current);
+          this.setOperationState(phase, completedRef.current, missionsRef.current);
         }
 
         private positionWorldElements() {
@@ -229,26 +232,32 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
         }
 
         private resetActorsToBase() {
-          for (const robot of ROBOTS) {
-            const sprite = this.robots.get(robot);
-            const shadow = this.shadows.get(robot);
-            const start = this.starts.get(robot);
-            if (!sprite || !start) continue;
-            this.tweens.killTweensOf(sprite);
-            sprite.setPosition(start[0], start[1]).setAlpha(1).setVisible(true).play(`${robot}-idle-anim`, true);
-            shadow?.setPosition(start[0], start[1] + 10).setVisible(true);
-          }
+          for (const robot of ROBOTS) this.resetRobotToBase(robot);
         }
 
-        private applyWorldSnapshot(completed: readonly IncidentId[]) {
+        private resetRobotToBase(robot: RobotId) {
+          const sprite = this.robots.get(robot);
+          const shadow = this.shadows.get(robot);
+          const start = this.starts.get(robot);
+          if (!sprite || !start) return;
+          this.tweens.killTweensOf(sprite);
+          sprite.setPosition(start[0], start[1]).setAlpha(1).setVisible(true).play(`${robot}-idle-anim`, true);
+          shadow?.setPosition(start[0], start[1] + 10).setVisible(true);
+          this.writeRobotPosition(robot, start[0], start[1]);
+        }
+
+        private writeRobotPosition(robot: RobotId, x: number, y: number) {
+          if (containerRef.current) containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Position`] = `${Math.round(x)},${Math.round(y)}`;
+        }
+
+        private applyWorldSnapshot(completed: readonly LegacyIncidentId[]) {
           const snapshot = deriveWorldSnapshot(completed);
           if (containerRef.current) {
-            containerRef.current.dataset.worldCompleted = INCIDENTS.filter((incident) => completed.includes(incident)).join(",");
+            containerRef.current.dataset.worldCompleted = LEGACY_INCIDENTS.filter((incident) => completed.includes(incident)).join(",");
             containerRef.current.dataset.worldResolvedCount = String(snapshot.resolvedCount);
           }
           this.planLines?.clear();
-          for (const robot of ROBOTS) this.robots.get(robot)?.play(`${robot}-idle-anim`, true);
-          INCIDENTS.forEach((incident) => {
+          LEGACY_INCIDENTS.forEach((incident) => {
             const resolved = completed.includes(incident);
             const marker = this.markers.get(incident);
             if (marker) marker.setAlpha(resolved ? 0.18 : 1).setScale(resolved ? 1.35 : 2);
@@ -318,8 +327,9 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
         }
 
         private moveRobot(robot: RobotId, incident: IncidentId, duration: number, onArrive: () => void) {
-          const sprite = this.robots.get(robot); const target = this.targets.get(incident);
-          if (!sprite || !target) return;
+          const sprite = this.robots.get(robot);
+          const target = this.activeMap.incidentPositions[incident];
+          if (!sprite) return;
           const shadow = this.shadows.get(robot);
           this.tweens.killTweensOf(sprite);
           sprite.play(`${robot}-walk-anim`, true);
@@ -344,38 +354,77 @@ export function GameCanvas({ phase, completedIncidents, stageMap, panX = 0, onEr
               x: point[0], y: point[1],
               duration: Math.max(90, duration * distances[index] / totalDistance),
               ease: "Linear",
-              onUpdate: () => shadow?.setPosition(sprite.x, sprite.y + 10),
+              onUpdate: () => {
+                shadow?.setPosition(sprite.x, sprite.y + 10);
+                this.writeRobotPosition(robot, sprite.x, sprite.y);
+              },
               onComplete: () => walk(index + 1),
             });
           };
           walk(0);
         }
 
-        setOperationState(next: OperationPhase, completed: readonly IncidentId[]) {
+        private playMissionEffect(mission: ActiveRobotMission) {
+          const [x, y] = this.activeMap.incidentPositions[mission.incidentId];
+          if (["extinguish", "firebreak", "lower_water"].includes(mission.actionId)) {
+            this.water?.setPosition(x + 46, y - 8).setVisible(true).play("water-loop", true);
+            this.steam?.setPosition(x, y - 6).setVisible(true).play("steam-once", true);
+            this.time.delayedCall(950, () => this.water?.setVisible(false));
+          } else if (["evacuate", "carry_parts", "rescue_residents", "rescue_cat"].includes(mission.actionId)) {
+            this.hearts?.setPosition(x, y - 42).setVisible(true).play("heart-once", true);
+            this.time.delayedCall(950, () => this.hearts?.setVisible(false));
+          } else {
+            this.sparks?.setPosition(x, y - 10).setVisible(true).play("spark-loop", true);
+            this.restore?.setPosition(x, y - 8).setVisible(true).play("restore-once", true);
+            this.time.delayedCall(950, () => this.sparks?.setVisible(false));
+          }
+        }
+
+        private syncRobotMissions(activeMissions: readonly ActiveRobotMission[]) {
+          const byRobot = new Map(activeMissions.map((mission) => [mission.robotId, mission]));
+          for (const robot of ROBOTS) {
+            const mission = byRobot.get(robot);
+            const signature = mission ? `${mission.incidentId}:${mission.actionId}` : "";
+            const prior = this.missionSignatures.get(robot) ?? "";
+            if (signature === prior) continue;
+            this.missionSignatures.set(robot, signature);
+            if (!mission) {
+              this.resetRobotToBase(robot);
+              if (containerRef.current) {
+                delete containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Mission`];
+                delete containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Target`];
+              }
+              continue;
+            }
+            const [targetX, targetY] = this.activeMap.incidentPositions[mission.incidentId];
+            if (containerRef.current) {
+              containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Mission`] = mission.incidentId;
+              containerRef.current.dataset[`robot${robot[0].toUpperCase()}${robot.slice(1)}Target`] = `${targetX},${targetY}`;
+            }
+            this.moveRobot(robot, mission.incidentId, 1100, () => this.playMissionEffect(mission));
+          }
+        }
+
+        setOperationState(next: OperationPhase, completed: readonly LegacyIncidentId[], activeMissions: readonly ActiveRobotMission[]) {
           if (!this.planLines || this.robots.size === 0) return;
           const signature = [...completed].sort().join(",");
-          if (next === this.currentPhase && signature === this.completedSignature && next !== "idle") return;
           if (next === "complete" && !canComplete(completed)) return;
           const phaseChanged = next !== this.currentPhase;
+          const worldChanged = signature !== this.completedSignature;
           this.currentPhase = next;
           this.completedSignature = signature;
-          if (next === "idle") this.resetActorsToBase();
-          this.applyWorldSnapshot(completed);
-          if (!phaseChanged && next !== "idle") return;
+          if (worldChanged) this.applyWorldSnapshot(completed);
+          this.syncRobotMissions(activeMissions);
 
           if (next === "analyzing") this.cameras.main.flash(180, 57, 191, 242, false);
           if (next === "preview") {
-            const assignments: Array<[RobotId, IncidentId, number]> = [["aqua", "fire", 0x39bff2], ["fix", "bridge", 0xffd34e], ["buddy", "cat", 0xff6577]];
+            const assignments: Array<[RobotId, LegacyIncidentId, number]> = [["aqua", "fire", 0x39bff2], ["fix", "bridge", 0xffd34e], ["buddy", "cat", 0xff6577]];
             for (const [robot, incident, color] of assignments) {
               const sprite = this.robots.get(robot); const to = this.markerTargets.get(incident); if (!sprite || !to) continue;
               this.planLines.lineStyle(5, color, 0.78); this.planLines.lineBetween(sprite.x, sprite.y, to[0], to[1]);
             }
           }
-          if (next === "fire") this.moveRobot("aqua", "fire", 900, () => { this.water?.setVisible(true).play("water-loop"); this.tweens.add({ targets: [this.fire, this.smoke], alpha: 0.35, duration: 1200 }); this.steam?.setVisible(true).play("steam-once"); });
-          if (next === "bridge") this.moveRobot("fix", "bridge", 1050, () => { this.sparks?.setVisible(true).play("spark-loop"); this.time.delayedCall(900, () => this.bridge?.setTexture("bridge-repaired")); });
-          if (next === "cat") this.moveRobot("buddy", "cat", 950, () => { this.cat?.play("cat-hop-anim", true); this.hearts?.setVisible(true).play("heart-once"); this.time.delayedCall(850, () => this.cat?.setVisible(false)); });
-          if (next === "generator") this.moveRobot("fix", "generator", 1100, () => { this.restore?.setVisible(true).play("restore-once"); this.electricity?.setVisible(false); this.generator?.setTexture("generator-on", 0).play("generator-on-anim", true); });
-          if (next === "complete") {
+          if (next === "complete" && phaseChanged) {
             const positions: [number, number][] = this.activeMap.layout === "classic"
               ? [[555, 430], [640, 420], [725, 430]]
               : ROBOTS.map((robot) => [...this.activeMap.robotStarts[robot]]);

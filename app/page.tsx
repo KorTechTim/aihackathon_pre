@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GameCanvas, type OperationPhase } from "@/components/GameCanvas";
+import { GameCanvas, type ActiveRobotMission, type OperationPhase } from "@/components/GameCanvas";
 import { PixelButton } from "@/components/PixelButton";
 import { StageViewport } from "@/components/StageViewport";
 import { PixelPanicAudio, type PixelPanicSfx } from "@/lib/audio-engine";
@@ -53,6 +53,7 @@ declare global {
     __PIXEL_PANIC_DEBUG__?: {
       phase: OperationPhase;
       completedIncidents: LegacyIncidentId[];
+      missions: ActiveRobotMission[];
       worldSnapshot: ReturnType<typeof deriveWorldSnapshot>;
       game: RescueGameState;
       stageMap: StageMapId;
@@ -79,18 +80,22 @@ const essentialAssets = [
 
 const debugEnabled = process.env.NEXT_PUBLIC_ENABLE_TEST_DEBUG === "1";
 
-function legacyWorldState(game: RescueGameState): { phase: OperationPhase; completed: LegacyIncidentId[] } {
+function legacyWorldState(game: RescueGameState): { phase: OperationPhase; completed: LegacyIncidentId[]; missions: ActiveRobotMission[] } {
   const completed: LegacyIncidentId[] = [];
   if (["resolved", "contained"].includes(game.incidents.bakery_fire.status) && ["resolved", "contained"].includes(game.incidents.house_fire.status)) completed.push("fire");
   if (["resolved", "contained"].includes(game.incidents.bridge_damage.status)) completed.push("bridge");
   if (["resolved", "contained"].includes(game.incidents.cat_trapped.status)) completed.push("cat");
   if (["resolved", "contained"].includes(game.incidents.power_flood.status)) completed.push("generator");
-  const pending = ROBOT_IDS.map((id) => game.robots[id].pendingAction).find(Boolean);
-  if (!pending) return { phase: game.status === "success" ? "complete" : "idle", completed };
-  if (pending.actionId === "build_bridge") return { phase: "bridge", completed };
-  if (pending.actionId === "rescue_cat" || pending.actionId === "rescue_residents" || pending.actionId === "evacuate" || pending.actionId === "carry_parts") return { phase: "cat", completed };
-  if (pending.actionId === "extinguish" || pending.actionId === "firebreak" || pending.actionId === "lower_water") return { phase: "fire", completed };
-  return { phase: "generator", completed };
+  const missions = ROBOT_IDS.flatMap((robotId): ActiveRobotMission[] => {
+    const pending = game.robots[robotId].pendingAction;
+    return pending ? [{ robotId, incidentId: pending.incidentId, actionId: pending.actionId }] : [];
+  });
+  const pending = missions[0];
+  if (!pending) return { phase: game.status === "success" ? "complete" : "idle", completed, missions };
+  if (pending.actionId === "build_bridge") return { phase: "bridge", completed, missions };
+  if (pending.actionId === "rescue_cat" || pending.actionId === "rescue_residents" || pending.actionId === "evacuate" || pending.actionId === "carry_parts") return { phase: "cat", completed, missions };
+  if (pending.actionId === "extinguish" || pending.actionId === "firebreak" || pending.actionId === "lower_water") return { phase: "fire", completed, missions };
+  return { phase: "generator", completed, missions };
 }
 
 export default function Home() {
@@ -267,6 +272,7 @@ export default function Home() {
     window.__PIXEL_PANIC_DEBUG__ = {
       phase: visual.phase,
       completedIncidents: visual.completed,
+      missions: visual.missions,
       worldSnapshot: deriveWorldSnapshot(visual.completed),
       game,
       stageMap: stageMap.id,
@@ -581,7 +587,7 @@ export default function Home() {
 
 function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpen, paused, soundOn, gameError, toast, onIncident, onRobot, onAction, onNpc, onCloseNpc, onCloseActions, onPause, onSound, onHelp, onGameError }: {
   game: RescueGameState;
-  visual: { phase: OperationPhase; completed: LegacyIncidentId[] };
+  visual: { phase: OperationPhase; completed: LegacyIncidentId[]; missions: ActiveRobotMission[] };
   stageMap: StageMapDefinition;
   mapPanX: number;
   npcSpeech: NpcSpeech | null;
@@ -613,7 +619,7 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
 
   return (
     <section className="game-screen" aria-label="PIXEL PANIC 클릭 구조 작전" data-wave={game.wave} data-stage-map={stageMap.id} data-status={game.status} data-resolved={resolvedCount}>
-      <GameCanvas phase={visual.phase} completedIncidents={visual.completed} stageMap={stageMap} panX={mapPanX} onError={onGameError} />
+      <GameCanvas phase={visual.phase} completedIncidents={visual.completed} missions={visual.missions} stageMap={stageMap} panX={mapPanX} onError={onGameError} />
       <header className="top-hud pixel-panel">
         <div className="hud-brand"><img src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" /><span><strong>PIXEL PANIC</strong><small>CLICK RESCUE OPS</small></span></div>
         <HudStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} emphasized />

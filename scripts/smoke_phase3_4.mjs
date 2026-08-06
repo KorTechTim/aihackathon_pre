@@ -97,6 +97,9 @@ await page.waitForFunction(() => {
 });
 await page.getByRole("button", { name: "가스통 위치를 FIX에 공유" }).click();
 await page.getByRole("dialog").waitFor({ state: "hidden" });
+await page.waitForFunction(() => document.querySelector(".phaser-canvas")?.getAttribute("data-robot-buddy-mission") === "bakery_fire");
+assert.equal(await page.locator(".phaser-canvas").getAttribute("data-robot-buddy-target"), "300,252");
+await page.waitForFunction(() => document.querySelector(".phaser-canvas")?.getAttribute("data-robot-buddy-position") === "300,252");
 
 const manifestResponse = await page.request.get(`${baseUrl}/assets/pixel-panic/manifests/asset-manifest.json`);
 assert.equal(manifestResponse.ok(), true);
@@ -124,4 +127,4 @@ assert.deepEqual(highlandIncidentPosition, { left: "985px", top: "445px" });
 await waveThreePage.close();
 assert.deepEqual([...titleErrors, ...errors], []);
 await browser.close();
-console.log("Responsive smoke PASSED: title/mission audio, 9 rotating maps with unique placements, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");
+console.log("Responsive smoke PASSED: exact robot mission targets, title/mission audio, 9 rotating maps with unique placements, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");

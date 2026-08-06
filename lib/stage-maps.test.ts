@@ -33,7 +33,10 @@ test("신규 지형은 고유 배치와 로봇 이동 경로를 사용한다", (
   for (const map of uniqueMaps) {
     assert.notDeepEqual(map.npcPositions, STAGE_MAPS[0].npcPositions, map.id);
     assert.notDeepEqual(map.incidentPositions, STAGE_MAPS[0].incidentPositions, map.id);
-    assert.equal(Object.keys(map.routes ?? {}).length, 4, map.id);
+    assert.deepEqual(Object.keys(map.routes ?? {}).sort(), [...INCIDENT_IDS].sort(), map.id);
+    for (const incidentId of INCIDENT_IDS) {
+      assert.deepEqual(map.routes?.[incidentId]?.at(-1), map.incidentPositions[incidentId], `${map.id}: ${incidentId} route target`);
+    }
 
     const positions = INCIDENT_IDS.map((id) => map.incidentPositions[id]);
     for (let index = 0; index < positions.length; index += 1) {
