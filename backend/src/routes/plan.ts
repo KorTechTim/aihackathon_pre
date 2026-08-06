@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../config.js";
+import { requireBackendAuth } from "../middleware/backend-auth.js";
 import { IpRateLimiter } from "../middleware/rate-limit.js";
 import type { RescuePlanner } from "../services/openai-planner.js";
 import { PlanCache } from "../services/plan-cache.js";
@@ -25,7 +26,10 @@ export function registerPlanRoute(app: FastifyInstance, options: { config: AppCo
   const limiter = new IpRateLimiter(config.rateLimitMax, config.rateLimitWindowMs, config.rateLimitBurst);
   const cache = new PlanCache(config.planCacheTtlMs, config.planCacheMax);
 
-  app.post<{ Body: { command: string } }>("/v1/plan", { schema: { body: bodySchema } }, async (request, reply) => {
+  app.post<{ Body: { command: string } }>("/v1/plan", {
+    onRequest: requireBackendAuth(config),
+    schema: { body: bodySchema },
+  }, async (request, reply) => {
     const startedAt = Date.now();
     const command = request.body.command.trim();
     if (command.length < 2) return reply.status(400).send({ error: "command는 2~500자로 입력해주세요.", code: "INVALID_COMMAND", requestId: request.id });

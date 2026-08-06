@@ -2,7 +2,7 @@ export function mockPlan(priority, source = "openai") {
   return {
     source,
     requestId: "qa-request-id",
-    ...(source === "fallback" ? { degradedReason: "OPENAI_UNAVAILABLE" } : {}),
+    ...(source === "fallback" ? { degradedReason: "OCI_UNAVAILABLE" } : {}),
     plan: {
       summary: source === "openai" ? "요청한 우선순위로 구조 작전을 준비했습니다." : "안전한 기본 구조 작전을 준비했습니다.",
       priority,

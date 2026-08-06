@@ -13,12 +13,21 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 node_major="$(node -p 'Number(process.versions.node.split(".")[0])')"
-if [ "$node_major" -lt 20 ]; then
-  echo "Node.js 20 이상이 필요합니다. 현재: $(node --version)" >&2
+if [ "$node_major" -lt 20 ] || [ "$node_major" -ge 23 ]; then
+  echo "Node.js >=20 <23 버전이 필요합니다. 현재: $(node --version)" >&2
   exit 1
 fi
 if ! command -v python3 >/dev/null 2>&1; then
-  echo "Python 3가 필요합니다." >&2
+  echo "Python >=3.10 버전이 필요합니다. Python 3.12를 권장합니다." >&2
+  exit 1
+fi
+python_version="$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+  echo "Python >=3.10 버전이 필요합니다. 현재: $python_version (권장: 3.12)" >&2
+  exit 1
+fi
+if [ -x .venv/bin/python ] && ! .venv/bin/python -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+  echo "기존 .venv가 Python 3.10 미만입니다. .venv를 정리한 뒤 다시 실행해주세요." >&2
   exit 1
 fi
 

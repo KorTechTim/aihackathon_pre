@@ -11,4 +11,5 @@ test-results/
 tmp/imagegen/
 .vercel
 infra/oci/.env.production
+backend.env
 backend/dist/

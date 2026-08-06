@@ -14,7 +14,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@fastify/cors": "11.3.0",
     "fastify": "5.11.2",
     "openai": "7.4.0"
   },

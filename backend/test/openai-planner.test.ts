@@ -6,7 +6,7 @@ import { createOpenAIPlanner } from "../src/services/openai-planner.js";
 
 const config: AppConfig = {
   host: "127.0.0.1", port: 8080, nodeEnv: "test", openaiApiKey: "test-only-key", openaiModel: "test-model", openaiTimeoutMs: 100,
-  allowedOrigins: ["http://localhost:3000"], trustProxyHops: false, rateLimitMax: 10, rateLimitWindowMs: 60_000, rateLimitBurst: 3,
+  backendSharedToken: "test-only-backend-token-32-bytes-minimum", trustProxyHops: false, rateLimitMax: 10, rateLimitWindowMs: 60_000, rateLimitBurst: 3,
   planCacheTtlMs: 60_000, planCacheMax: 100,
 };
 

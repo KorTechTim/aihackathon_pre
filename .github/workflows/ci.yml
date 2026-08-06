@@ -37,3 +37,5 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Validate
         run: npm run ci
+      - name: Build and test backend container
+        run: npm run ci:docker

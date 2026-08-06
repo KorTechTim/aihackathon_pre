@@ -71,8 +71,7 @@ const essentialAssets = [
 ];
 
 const executionPhases: OperationPhase[] = ["fire", "bridge", "cat", "generator", "complete"];
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
-const planUrl = apiBase ? `${apiBase}/v1/plan` : "/api/plan";
+const planUrl = "/api/plan";
 const debugEnabled = process.env.NEXT_PUBLIC_ENABLE_TEST_DEBUG === "1";
 const ANALYSIS_TIMEOUT_MS = 7_500;
 

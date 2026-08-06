@@ -12,7 +12,7 @@
     "build:test": "NEXT_PUBLIC_ENABLE_TEST_DEBUG=1 next build",
     "start": "next start",
     "typecheck": "tsc --noEmit && npm --prefix backend run typecheck",
-    "test:unit": "tsx --test lib/*.test.ts",
+    "test:unit": "tsx --test lib/*.test.ts lib/server/*.test.ts",
     "test:backend": "npm --prefix backend test",
     "assets:generate": ".venv/bin/python scripts/generate_phase1_assets.py && .venv/bin/python scripts/generate_phase2_assets.py && .venv/bin/python scripts/generate_phase3_4_assets.py && .venv/bin/python scripts/build_asset_manifest.py",
     "assets:generate:phase2": ".venv/bin/python scripts/generate_phase2_assets.py",
@@ -28,11 +28,12 @@
     "qa:oci-api": "node scripts/smoke_oci_api.mjs",
     "qa:phase2": "node scripts/smoke_phase3_4.mjs",
     "qa:phase34": "node scripts/smoke_phase3_4.mjs && node scripts/capture_phase3_4.mjs",
-    "ci": "npm run assets:verify && npm run typecheck && npm run test:unit && npm run test:backend && npm run build:test && npm run qa:full"
+    "policy:verify": "node scripts/verify_repository_policy.mjs",
+    "ci:docker": "./scripts/test_backend_container.sh",
+    "ci": "npm run policy:verify && npm run assets:verify && npm run typecheck && npm run test:unit && npm run test:backend && npm run build:test && npm run qa:full && npm --prefix backend run build"
   },
   "dependencies": {
     "next": "16.3.0",
-    "openai": "7.4.0",
     "phaser": "4.2.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"

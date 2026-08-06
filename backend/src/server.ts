@@ -1,5 +1,4 @@
 import { pathToFileURL } from "node:url";
-import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import { loadConfig, type AppConfig } from "./config.js";
 import { registerErrorHandler } from "./middleware/error-handler.js";
@@ -10,7 +9,6 @@ import { createOpenAIPlanner, type RescuePlanner } from "./services/openai-plann
 
 export async function buildServer(options: { config?: AppConfig; planner?: RescuePlanner; audit?: (record: AuditRecord) => void; logger?: boolean } = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig();
-  const allowedOrigins = new Set(config.allowedOrigins);
   const app = Fastify({
     logger: options.logger ?? config.nodeEnv !== "test",
     trustProxy: config.trustProxyHops,
@@ -21,16 +19,6 @@ export async function buildServer(options: { config?: AppConfig; planner?: Rescu
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("X-Request-Id", request.id);
-    const origin = request.headers.origin;
-    if (origin && !allowedOrigins.has(origin)) return reply.status(403).send({ error: "허용되지 않은 Origin입니다.", code: "ORIGIN_NOT_ALLOWED", requestId: request.id });
-  });
-
-  await app.register(cors, {
-    origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "X-Request-Id"],
-    credentials: false,
-    strictPreflight: true,
   });
 
   registerErrorHandler(app);

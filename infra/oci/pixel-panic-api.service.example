@@ -10,9 +10,9 @@ RemainAfterExit=yes
 User=pixelpanic
 Group=pixelpanic
 WorkingDirectory=/opt/pixel-panic/infra/oci
-ExecStart=/usr/bin/docker compose --env-file .env.production up -d --build --remove-orphans
-ExecReload=/usr/bin/docker compose --env-file .env.production up -d --build --remove-orphans
-ExecStop=/usr/bin/docker compose --env-file .env.production down
+ExecStart=/usr/bin/docker compose --env-file /etc/pixel-panic/backend.env -f /opt/pixel-panic/infra/oci/docker-compose.yml up -d --build --remove-orphans
+ExecReload=/usr/bin/docker compose --env-file /etc/pixel-panic/backend.env -f /opt/pixel-panic/infra/oci/docker-compose.yml up -d --build --remove-orphans
+ExecStop=/usr/bin/docker compose --env-file /etc/pixel-panic/backend.env -f /opt/pixel-panic/infra/oci/docker-compose.yml down
 TimeoutStartSec=180
 TimeoutStopSec=45
 

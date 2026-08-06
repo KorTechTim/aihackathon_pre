@@ -4,9 +4,9 @@ services:
     build:
       context: ../../backend
     env_file:
-      - .env.production
+      - /etc/pixel-panic/backend.env
     ports:
-      - "${BIND_ADDRESS:-127.0.0.1}:8080:8080"
+      - "8080:8080"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
