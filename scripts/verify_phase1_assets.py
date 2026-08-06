@@ -8,7 +8,6 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "frontend/public/assets/pixel-panic"
 
 EXPECTED: dict[str, tuple[int, int]] = {
-    "style/pp_style_board.png": (1920, 1080),
     "brand/pp_brand_logo_horizontal.png": (512, 128),
     "brand/pp_brand_logo_mark.png": (128, 128),
     "ui/screens/pp_ui_screen_title_bg.png": (1280, 720),
@@ -28,7 +27,6 @@ EXPECTED: dict[str, tuple[int, int]] = {
     "ui/buttons/pp_ui_button_icon_states.png": (48, 192),
     "ui/pp_ui_badge_mission_complete.png": (320, 80),
     "ui/pp_ui_badge_mission_failed.png": (320, 80),
-    "ui/pp_placeholder_map.png": (1280, 544),
 }
 
 for name in ("timer", "village_hp", "incident_count", "rescued", "command_count", "ai", "pause", "sound_on", "sound_off", "fullscreen", "ready", "moving", "working", "blocked", "done", "warning", "quick_fire_first", "quick_rescue_first", "quick_nearest", "quick_high_risk"):
@@ -38,19 +36,14 @@ for name in ("incident_fire", "incident_bridge", "incident_cat", "incident_gener
 for robot in ("aqua", "fix", "buddy"):
     for state in ("ready", "busy", "fail"):
         EXPECTED[f"ui/portraits/pp_ui_portrait_{robot}_{state}.png"] = (64, 64)
-    EXPECTED[f"ui/pp_placeholder_robot_{robot}.png"] = (64, 64)
-for incident in ("fire", "bridge", "cat", "generator"):
-    EXPECTED[f"ui/pp_placeholder_incident_{incident}.png"] = (64, 64)
 for grade in ("s", "a", "b", "c", "f"):
     EXPECTED[f"ui/pp_ui_grade_{grade}.png"] = (128, 128)
 
 OPAQUE = {
-    "style/pp_style_board.png",
     "ui/screens/pp_ui_screen_title_bg.png",
     "ui/screens/pp_ui_screen_loading_bg.png",
     "ui/screens/pp_ui_screen_result_success_bg.png",
     "ui/screens/pp_ui_screen_result_fail_bg.png",
-    "ui/pp_placeholder_map.png",
 }
 
 

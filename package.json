@@ -6,17 +6,21 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "assets:generate": ".venv/bin/python scripts/generate_phase1_assets.py && .venv/bin/python scripts/generate_phase2_assets.py",
+    "assets:generate": ".venv/bin/python scripts/generate_phase1_assets.py && .venv/bin/python scripts/generate_phase2_assets.py && .venv/bin/python scripts/generate_phase3_4_assets.py && .venv/bin/python scripts/build_asset_manifest.py",
     "assets:generate:phase2": ".venv/bin/python scripts/generate_phase2_assets.py",
-    "assets:verify": ".venv/bin/python scripts/verify_phase1_assets.py && .venv/bin/python scripts/verify_phase2_assets.py",
+    "assets:generate:phase34": ".venv/bin/python scripts/generate_phase3_4_assets.py && .venv/bin/python scripts/build_asset_manifest.py",
+    "assets:verify": ".venv/bin/python scripts/verify_phase1_assets.py && .venv/bin/python scripts/verify_phase2_assets.py && .venv/bin/python scripts/verify_phase3_4_assets.py",
     "assets:verify:phase1": ".venv/bin/python scripts/verify_phase1_assets.py",
     "assets:verify:phase2": ".venv/bin/python scripts/verify_phase2_assets.py",
-    "qa:screenshots": "node scripts/capture_phase1.mjs",
-    "qa:smoke": "node scripts/smoke_phase1.mjs",
-    "qa:phase2": "node scripts/smoke_phase2.mjs && node scripts/capture_phase2.mjs"
+    "assets:verify:phase34": ".venv/bin/python scripts/verify_phase3_4_assets.py",
+    "qa:screenshots": "node scripts/capture_phase3_4.mjs",
+    "qa:smoke": "node scripts/smoke_phase3_4.mjs",
+    "qa:phase2": "node scripts/smoke_phase3_4.mjs",
+    "qa:phase34": "node scripts/smoke_phase3_4.mjs && node scripts/capture_phase3_4.mjs"
   },
   "dependencies": {
     "next": "latest",
+    "openai": "^7.4.0",
     "phaser": "latest",
     "react": "latest",
     "react-dom": "latest"

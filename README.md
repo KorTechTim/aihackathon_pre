@@ -1,32 +1,30 @@
 # PIXEL PANIC — AI 구조대
 
-자연어로 `AQUA`, `FIX`, `BUDDY` 세 구조 로봇을 지휘해 90초 안에 도트 마을의 네 가지 사고를 해결하는 캐주얼 구조 퍼즐 게임입니다.
+자연어로 `AQUA`, `FIX`, `BUDDY` 세 구조 로봇을 지휘해 90초 안에 도트 마을의 네 가지 사고를 해결하는 캐주얼 구조 퍼즐 게임입니다. NHN AI 해커톤 예선 심사용으로 제작했습니다.
 
 ## 공개 데모
 
 [PIXEL PANIC 웹 데모 실행](https://pixel-panic-ai-rescue.vercel.app)
 
-데스크톱 또는 모바일 가로 화면을 권장합니다.
+데스크톱 또는 모바일 가로 화면을 권장합니다. 모바일 세로 화면에서는 회전 안내를 제공합니다.
 
-![PIXEL PANIC Phase 2 플레이 화면](visual-regression/phase2/01_world_initial.png)
+![PIXEL PANIC 최종 타이틀](visual-regression/phase4/01_title.png)
 
-## 현재 구현 상태
+## 구현 완료 범위
 
-그래픽 작업 지시서의 **Phase 2 — 마을 맵·건물·사건 오브젝트**까지 구현했습니다.
+그래픽 작업 지시서의 **Phase 1–4 전체 범위**를 구현했습니다.
 
-- 타이틀, 로딩, 90초 플레이, 성공, 실패 화면
-- 자연어 명령 입력과 추천 명령 4종
-- AI 분석 상태와 로봇별 작전 미리보기
-- Phaser 3 기반 로봇 배정선·출동 연출
-- 9-slice 패널, 4상태 버튼, HUD·사건·행동 아이콘
-- AQUA·FIX·BUDDY 상태 초상화와 S/A/B/C/F 등급
-- 데스크톱 및 모바일 가로 비율 대응, 모바일 세로 회전 안내
-- 40×17 고정 화면 픽셀 아트 마을과 4개 사건 마커
-- 건물·교량·발전기·소품 상태별 P0 에셋 41종
-- 12개 레이어 맵, 충돌 680셀, 로봇 스폰과 사건 상호작용 데이터
-- 다리 수리 전 발전기 접근 불가 의존성을 포함한 자동 경로 검사
-
-월드 맵과 사건 마커는 Phase 2 에셋으로 교체했습니다. 로봇·주민·고양이와 실제 화재·연기·스파크 애니메이션은 Phase 3 범위입니다. Phase 1 UI는 기능 골격은 동작하지만 스타일 보드 수준의 시각 품질에는 미달해 재디자인 항목으로 남아 있습니다.
+- 고품질 최종 타이틀, 로딩 진행률·실패 재시도, 성공 S등급·실패 결과 화면
+- 자연어 명령 입력, 추천 명령 4종, AI 분석 상태와 로봇별 작전 미리보기
+- `화재 진압 → 다리 수리 → 고양이 구조 → 발전기 복구 → 축하` 실제 플레이 시퀀스
+- AQUA·FIX·BUDDY 32×32, 4방향 idle/walk/고유 행동/celebrate/fail 스프라이트
+- 주민 4종과 고양이 idle/panic/evacuate/cheer/hop/rescued 애니메이션
+- 화재·연기·물·증기·수리·전기·구조·완료 효과 26종
+- 40×17 픽셀 마을, 4개 사건, 12개 레이어와 680셀 충돌 데이터
+- 176개 런타임 PNG/WebP를 등록한 통합 에셋 매니페스트와 36개 애니메이션 메타데이터
+- 2048px 텍스처 제한, 로딩 예산, 필수 파일·크기·알파·경로 자동 검증
+- 1280×720, 1024×576, 1920×1080, 모바일 가로·세로 반응형 대응
+- Playwright 스모크 테스트와 Phase 4 필수 장면 12종 회귀 캡처
 
 ## 실행 방법
 
@@ -39,34 +37,33 @@ npm run dev
 
 브라우저에서 `http://localhost:3000`을 엽니다.
 
-## 검수 명령
+## 생성·검수 명령
 
 ```bash
+npm run assets:generate
 npm run assets:verify
 npm run build
-npm run qa:smoke
-npm run qa:screenshots
-npm run qa:phase2
+BASE_URL=http://127.0.0.1:3000 npm run qa:phase34
 ```
 
-`qa:smoke`와 `qa:screenshots`는 실행 중인 앱을 기본적으로 `http://127.0.0.1:3100`에서 확인합니다. 다른 주소라면 `PIXEL_PANIC_URL` 환경 변수를 사용합니다.
+`qa:phase34`는 실제 타이틀→플레이→분석→미리보기→실행 흐름과 매니페스트, 모바일 회전 안내를 검사하고 `visual-regression/phase4`에 12개 장면을 저장합니다.
 
 ## 주요 문서
 
 - [그래픽 4-Phase 작업 지시서](PIXEL_PANIC_GRAPHICS_4_PHASE_WORK_ORDER_KO.md)
 - [Phase 1 결과 보고서](PHASE_1_REPORT.md)
 - [Phase 2 결과 보고서](PHASE_2_REPORT.md)
-- [Phase 2 이미지 생성 프롬프트](assets-src/pixel-panic/world/reference/PHASE_2_IMAGEGEN_PROMPTS.md)
-- [스타일 보드 생성 프롬프트](assets-src/pixel-panic/style/STYLE_BOARD_PROMPT.md)
-- [팔레트](assets-src/pixel-panic/style/PALETTE.md)
-- [스타일 규칙](assets-src/pixel-panic/style/STYLE_RULES.md)
+- [Phase 3 결과 보고서](PHASE_3_REPORT.md)
+- [Phase 4 최종 보고서](PHASE_4_FINAL_REPORT.md)
+- [Phase 3·4 이미지 생성 프롬프트](assets-src/pixel-panic/ui/reference/PHASE_3_4_IMAGEGEN_PROMPTS.md)
+- [통합 에셋 매니페스트](frontend/public/assets/pixel-panic/manifests/asset-manifest.json)
 - [에셋 출처 기록](ASSET_PROVENANCE.csv)
 
 ## 기술 구성
 
 - Next.js 16 + React 19 + TypeScript
 - Phaser 3 (`pixelArt`, `roundPixels`, `antialias: false`)
-- 정적 RGBA PNG 에셋과 nearest-neighbor 렌더링
-- Playwright 기반 상호작용·반응형 화면 검수
+- Pillow 기반 결정론적 스프라이트시트 생성과 WebP 최적화
+- Playwright 기반 상호작용·반응형·비주얼 회귀 검수
 
-본 저장소의 캐릭터, UI, 배경과 로고는 이 프로젝트를 위해 새로 제작한 오리지널 에셋입니다.
+본 저장소의 캐릭터, UI, 배경, 효과와 로고는 이 프로젝트를 위해 새로 제작한 오리지널 에셋입니다.

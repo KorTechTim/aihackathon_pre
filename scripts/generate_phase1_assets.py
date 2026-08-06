@@ -417,11 +417,18 @@ def make_placeholders() -> None:
 
 
 def install_style_board(reference: Path | None) -> None:
+    preserved = SRC / "style/pp_style_board.png"
     if reference and reference.exists():
         image = Image.open(reference).convert("RGBA").resize((1920, 1080), NEAREST)
+        save(image, "style/pp_style_board.png", True)
+    elif preserved.exists():
+        # The reviewed ImageGen board is source provenance, not a disposable
+        # procedural artifact. Reuse it without overwriting it on regeneration.
+        image = Image.open(preserved).convert("RGBA")
+        save(image, "style/pp_style_board.png", False)
     else:
         image = scene_background("title").resize((1920, 1080), NEAREST)
-    save(image, "style/pp_style_board.png", True)
+        save(image, "style/pp_style_board.png", True)
 
 
 def main() -> None:

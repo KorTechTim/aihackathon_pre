@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORLD = ROOT / "frontend/public/assets/pixel-panic/world"
 
 EXPECTED: dict[str, tuple[int, int]] = {
-    "maps/pp_stage_01_preview.png": (1280, 544),
+    "maps/pp_stage_01_preview.webp": (1280, 544),
     "tilesets/pp_world_tileset_terrain_core.png": (256, 256),
     "tilesets/pp_world_tile_water_loop.png": (64, 16),
     "tilesets/pp_world_tile_flower_sway.png": (64, 16),
@@ -82,8 +82,9 @@ def main() -> None:
         total_bytes += path.stat().st_size
         with Image.open(path) as image:
             if image.size != expected_size: failures.append(f"SIZE {relative}: {image.size} != {expected_size}")
-            if image.mode != "RGBA": failures.append(f"MODE {relative}: {image.mode} != RGBA")
-            if relative.startswith("maps/") and image.getchannel("A").getextrema() != (255, 255): failures.append(f"ALPHA {relative}: preview must be opaque")
+            expected_mode = "RGB" if relative.endswith(".webp") else "RGBA"
+            if image.mode != expected_mode: failures.append(f"MODE {relative}: {image.mode} != {expected_mode}")
+            if relative.startswith("maps/") and image.mode == "RGBA" and image.getchannel("A").getextrema() != (255, 255): failures.append(f"ALPHA {relative}: preview must be opaque")
             if relative in TRANSPARENT:
                 corners = [image.getpixel((0, 0))[3], image.getpixel((image.width - 1, 0))[3], image.getpixel((0, image.height - 1))[3], image.getpixel((image.width - 1, image.height - 1))[3]]
                 if any(corners): failures.append(f"ALPHA {relative}: transparent padding required")

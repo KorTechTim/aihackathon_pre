@@ -1,0 +1,2507 @@
+{
+  "name": "PIXEL PANIC final runtime assets",
+  "version": 4,
+  "basePath": "/assets/pixel-panic/",
+  "textureLimit": 2048,
+  "budgets": {
+    "firstScreenTargetBytes": 1500000,
+    "firstScreenMaximumBytes": 2500000,
+    "playAdditionalTargetBytes": 5000000,
+    "playAdditionalMaximumBytes": 8000000,
+    "allP0TargetBytes": 8000000,
+    "allP0MaximumBytes": 12000000,
+    "staticBackgroundMaximumBytes": 1200000,
+    "spritesheetMaximumBytes": 2000000
+  },
+  "totals": {
+    "P0": 1082780,
+    "P1": 478169,
+    "P2": 39408
+  },
+  "assets": [
+    {
+      "key": "pp_brand_logo_horizontal",
+      "type": "image",
+      "url": "brand/pp_brand_logo_horizontal.png",
+      "format": "png",
+      "width": 512,
+      "height": 128,
+      "bytes": 1249,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_brand_logo_mark",
+      "type": "image",
+      "url": "brand/pp_brand_logo_mark.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 503,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_cat_carry_socket",
+      "type": "spritesheet",
+      "url": "characters/cat/pp_char_cat_carry_socket.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 1054,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_cat_hop",
+      "type": "spritesheet",
+      "url": "characters/cat/pp_char_cat_hop.png",
+      "format": "png",
+      "width": 144,
+      "height": 24,
+      "bytes": 1890,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_cat_idle",
+      "type": "spritesheet",
+      "url": "characters/cat/pp_char_cat_idle.png",
+      "format": "png",
+      "width": 96,
+      "height": 24,
+      "bytes": 1688,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_cat_meow",
+      "type": "spritesheet",
+      "url": "characters/cat/pp_char_cat_meow.png",
+      "format": "png",
+      "width": 96,
+      "height": 24,
+      "bytes": 1956,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_cat_rescued",
+      "type": "spritesheet",
+      "url": "characters/cat/pp_char_cat_rescued.png",
+      "format": "png",
+      "width": 96,
+      "height": 24,
+      "bytes": 1892,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_selection_ring_aqua",
+      "type": "spritesheet",
+      "url": "characters/common/pp_char_selection_ring_aqua.png",
+      "format": "png",
+      "width": 32,
+      "height": 16,
+      "bytes": 211,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_selection_ring_buddy",
+      "type": "spritesheet",
+      "url": "characters/common/pp_char_selection_ring_buddy.png",
+      "format": "png",
+      "width": 32,
+      "height": 16,
+      "bytes": 210,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_selection_ring_fix",
+      "type": "spritesheet",
+      "url": "characters/common/pp_char_selection_ring_fix.png",
+      "format": "png",
+      "width": 32,
+      "height": 16,
+      "bytes": 210,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_shadow_small",
+      "type": "spritesheet",
+      "url": "characters/common/pp_char_shadow_small.png",
+      "format": "png",
+      "width": 24,
+      "height": 10,
+      "bytes": 121,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_status_bubble",
+      "type": "spritesheet",
+      "url": "characters/common/pp_char_status_bubble.png",
+      "format": "png",
+      "width": 32,
+      "height": 40,
+      "bytes": 247,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_a_cheer",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_a_cheer.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 2569,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_a_evacuate_walk",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_a_evacuate_walk.png",
+      "format": "png",
+      "width": 192,
+      "height": 128,
+      "bytes": 2696,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_a_idle",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_a_idle.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 2366,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_a_panic",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_a_panic.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 2569,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_b_cheer",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_b_cheer.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 3036,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_b_evacuate_walk",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_b_evacuate_walk.png",
+      "format": "png",
+      "width": 192,
+      "height": 128,
+      "bytes": 3381,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_b_idle",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_b_idle.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 2654,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_b_panic",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_b_panic.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 3036,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_c_cheer",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_c_cheer.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 3055,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_c_evacuate_walk",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_c_evacuate_walk.png",
+      "format": "png",
+      "width": 192,
+      "height": 128,
+      "bytes": 3440,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_c_idle",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_c_idle.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 2723,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_c_panic",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_c_panic.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 3055,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_d_cheer",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_d_cheer.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 2751,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_d_evacuate_walk",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_d_evacuate_walk.png",
+      "format": "png",
+      "width": 192,
+      "height": 128,
+      "bytes": 2840,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_d_idle",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_d_idle.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 2490,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_npc_d_panic",
+      "type": "spritesheet",
+      "url": "characters/npcs/pp_char_npc_d_panic.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 2751,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_char_robot_aqua_celebrate",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_aqua_celebrate.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 3269,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_aqua_extinguish",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_aqua_extinguish.png",
+      "format": "png",
+      "width": 256,
+      "height": 128,
+      "bytes": 13580,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_aqua_fail",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_aqua_fail.png",
+      "format": "png",
+      "width": 128,
+      "height": 32,
+      "bytes": 7942,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_aqua_idle",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_aqua_idle.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 12110,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_aqua_walk",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_aqua_walk.png",
+      "format": "png",
+      "width": 192,
+      "height": 128,
+      "bytes": 14690,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_buddy_carry_walk",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_buddy_carry_walk.png",
+      "format": "png",
+      "width": 192,
+      "height": 128,
+      "bytes": 12893,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_buddy_celebrate",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_buddy_celebrate.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 3383,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_buddy_fail",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_buddy_fail.png",
+      "format": "png",
+      "width": 128,
+      "height": 32,
+      "bytes": 5340,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_buddy_idle",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_buddy_idle.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 10778,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_buddy_rescue",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_buddy_rescue.png",
+      "format": "png",
+      "width": 256,
+      "height": 128,
+      "bytes": 13858,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_buddy_walk",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_buddy_walk.png",
+      "format": "png",
+      "width": 192,
+      "height": 128,
+      "bytes": 13210,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_fix_celebrate",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_fix_celebrate.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 2614,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_fix_fail",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_fix_fail.png",
+      "format": "png",
+      "width": 128,
+      "height": 32,
+      "bytes": 5738,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_fix_idle",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_fix_idle.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 7758,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_fix_repair",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_fix_repair.png",
+      "format": "png",
+      "width": 256,
+      "height": 128,
+      "bytes": 9739,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_char_robot_fix_walk",
+      "type": "spritesheet",
+      "url": "characters/robots/pp_char_robot_fix_walk.png",
+      "format": "png",
+      "width": 192,
+      "height": 128,
+      "bytes": 9142,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_fx_ai_scanline",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_ai_scanline.png",
+      "format": "png",
+      "width": 1280,
+      "height": 896,
+      "bytes": 6923,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_alert_ping",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_alert_ping.png",
+      "format": "png",
+      "width": 384,
+      "height": 64,
+      "bytes": 16824,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_bolt_pop",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_bolt_pop.png",
+      "format": "png",
+      "width": 64,
+      "height": 16,
+      "bytes": 649,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_confetti",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_confetti.png",
+      "format": "png",
+      "width": 960,
+      "height": 96,
+      "bytes": 48093,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_danger_vignette",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_danger_vignette.png",
+      "format": "png",
+      "width": 1280,
+      "height": 720,
+      "bytes": 5217,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_dust_puff",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_dust_puff.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 7304,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_electric_arc",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_electric_arc.png",
+      "format": "png",
+      "width": 288,
+      "height": 48,
+      "bytes": 4582,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_ember_particle",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_ember_particle.png",
+      "format": "png",
+      "width": 32,
+      "height": 8,
+      "bytes": 346,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_fire_large_loop",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_fire_large_loop.png",
+      "format": "png",
+      "width": 384,
+      "height": 64,
+      "bytes": 11101,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_fire_medium_loop",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_fire_medium_loop.png",
+      "format": "png",
+      "width": 256,
+      "height": 48,
+      "bytes": 5527,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_fire_small_loop",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_fire_small_loop.png",
+      "format": "png",
+      "width": 144,
+      "height": 32,
+      "bytes": 3352,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_hammer_impact",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_hammer_impact.png",
+      "format": "png",
+      "width": 160,
+      "height": 32,
+      "bytes": 4049,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_light_flicker",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_light_flicker.png",
+      "format": "png",
+      "width": 128,
+      "height": 32,
+      "bytes": 2220,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_power_restore_burst",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_power_restore_burst.png",
+      "format": "png",
+      "width": 512,
+      "height": 64,
+      "bytes": 15362,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_puddle_fade",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_puddle_fade.png",
+      "format": "png",
+      "width": 192,
+      "height": 16,
+      "bytes": 2921,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_repair_spark",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_repair_spark.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 2204,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_rescue_heart",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_rescue_heart.png",
+      "format": "png",
+      "width": 144,
+      "height": 24,
+      "bytes": 3289,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_rescue_reach",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_rescue_reach.png",
+      "format": "png",
+      "width": 288,
+      "height": 32,
+      "bytes": 4353,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_safe_landing",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_safe_landing.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 2211,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_smoke_large_loop",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_smoke_large_loop.png",
+      "format": "png",
+      "width": 384,
+      "height": 64,
+      "bytes": 12969,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_smoke_small_loop",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_smoke_small_loop.png",
+      "format": "png",
+      "width": 192,
+      "height": 48,
+      "bytes": 8211,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_star_burst",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_star_burst.png",
+      "format": "png",
+      "width": 512,
+      "height": 64,
+      "bytes": 16401,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_steam_burst",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_steam_burst.png",
+      "format": "png",
+      "width": 384,
+      "height": 48,
+      "bytes": 17041,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_task_assign",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_task_assign.png",
+      "format": "png",
+      "width": 512,
+      "height": 64,
+      "bytes": 8820,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_task_complete",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_task_complete.png",
+      "format": "png",
+      "width": 512,
+      "height": 64,
+      "bytes": 22125,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_water_jet_loop",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_water_jet_loop.png",
+      "format": "png",
+      "width": 384,
+      "height": 24,
+      "bytes": 2350,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_fx_water_splash",
+      "type": "spritesheet",
+      "url": "fx/pp_fx_water_splash.png",
+      "format": "png",
+      "width": 384,
+      "height": 48,
+      "bytes": 13896,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_ui_button_danger_states",
+      "type": "spritesheet",
+      "url": "ui/buttons/pp_ui_button_danger_states.png",
+      "format": "png",
+      "width": 192,
+      "height": 192,
+      "bytes": 709,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_button_icon_states",
+      "type": "spritesheet",
+      "url": "ui/buttons/pp_ui_button_icon_states.png",
+      "format": "png",
+      "width": 48,
+      "height": 192,
+      "bytes": 495,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_button_primary_states",
+      "type": "spritesheet",
+      "url": "ui/buttons/pp_ui_button_primary_states.png",
+      "format": "png",
+      "width": 192,
+      "height": 192,
+      "bytes": 701,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_button_secondary_states",
+      "type": "spritesheet",
+      "url": "ui/buttons/pp_ui_button_secondary_states.png",
+      "format": "png",
+      "width": 192,
+      "height": 192,
+      "bytes": 710,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_action_evacuate",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_action_evacuate.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 283,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_action_extinguish",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_action_extinguish.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 316,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_action_move",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_action_move.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 290,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_action_repair",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_action_repair.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 279,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_action_rescue",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_action_rescue.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 275,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_action_wait",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_action_wait.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 284,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_ai",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_ai.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 162,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_blocked",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_blocked.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 192,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_command_count",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_command_count.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 194,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_done",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_done.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 228,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_fullscreen",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_fullscreen.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 134,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_incident_bridge",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_incident_bridge.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 166,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_incident_cat",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_incident_cat.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 221,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_incident_count",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_incident_count.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 185,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_incident_fire",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_incident_fire.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 273,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_incident_generator",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_incident_generator.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 228,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_moving",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_moving.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 192,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_pause",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_pause.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 133,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_quick_fire_first",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_quick_fire_first.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 275,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_quick_high_risk",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_quick_high_risk.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 185,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_quick_nearest",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_quick_nearest.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 199,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_quick_rescue_first",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_quick_rescue_first.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 215,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_ready",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_ready.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 228,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_rescued",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_rescued.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 224,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_sound_off",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_sound_off.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 231,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_sound_on",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_sound_on.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 231,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_timer",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_timer.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 215,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_village_hp",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_village_hp.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 138,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_warning",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_warning.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 185,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_icon_working",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_working.png",
+      "format": "png",
+      "width": 24,
+      "height": 24,
+      "bytes": 211,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_input_9s",
+      "type": "image",
+      "url": "ui/panels/pp_ui_input_9s.png",
+      "format": "png",
+      "width": 48,
+      "height": 48,
+      "bytes": 221,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_panel_alert_9s",
+      "type": "image",
+      "url": "ui/panels/pp_ui_panel_alert_9s.png",
+      "format": "png",
+      "width": 48,
+      "height": 48,
+      "bytes": 216,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_panel_base_9s",
+      "type": "image",
+      "url": "ui/panels/pp_ui_panel_base_9s.png",
+      "format": "png",
+      "width": 48,
+      "height": 48,
+      "bytes": 207,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_panel_command_9s",
+      "type": "image",
+      "url": "ui/panels/pp_ui_panel_command_9s.png",
+      "format": "png",
+      "width": 48,
+      "height": 48,
+      "bytes": 220,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_panel_success_9s",
+      "type": "image",
+      "url": "ui/panels/pp_ui_panel_success_9s.png",
+      "format": "png",
+      "width": 48,
+      "height": 48,
+      "bytes": 221,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_panel_tooltip_9s",
+      "type": "image",
+      "url": "ui/panels/pp_ui_panel_tooltip_9s.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 176,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_aqua_busy",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_aqua_busy.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 4515,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_aqua_fail",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_aqua_fail.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 6924,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_aqua_ready",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_aqua_ready.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 7311,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_buddy_busy",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_buddy_busy.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 4991,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_buddy_fail",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_buddy_fail.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 4552,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_buddy_ready",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_buddy_ready.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 4829,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_fix_busy",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_fix_busy.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 5378,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_fix_fail",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_fix_fail.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 4973,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_fix_ready",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_fix_ready.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 5241,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_badge_mission_complete",
+      "type": "image",
+      "url": "ui/pp_ui_badge_mission_complete.png",
+      "format": "png",
+      "width": 320,
+      "height": 80,
+      "bytes": 584,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_badge_mission_failed",
+      "type": "image",
+      "url": "ui/pp_ui_badge_mission_failed.png",
+      "format": "png",
+      "width": 320,
+      "height": 80,
+      "bytes": 614,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_grade_a",
+      "type": "image",
+      "url": "ui/pp_ui_grade_a.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 1174,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_grade_b",
+      "type": "image",
+      "url": "ui/pp_ui_grade_b.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 1158,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_grade_c",
+      "type": "image",
+      "url": "ui/pp_ui_grade_c.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 1120,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_grade_f",
+      "type": "image",
+      "url": "ui/pp_ui_grade_f.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 1090,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_grade_s",
+      "type": "image",
+      "url": "ui/pp_ui_grade_s.png",
+      "format": "png",
+      "width": 128,
+      "height": 128,
+      "bytes": 1131,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_loading_spinner",
+      "type": "image",
+      "url": "ui/pp_ui_loading_spinner.png",
+      "format": "png",
+      "width": 256,
+      "height": 32,
+      "bytes": 364,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_screen_loading_bg",
+      "type": "image",
+      "url": "ui/screens/pp_ui_screen_loading_bg.png",
+      "format": "png",
+      "width": 1280,
+      "height": 720,
+      "bytes": 8065,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_screen_result_fail_bg",
+      "type": "image",
+      "url": "ui/screens/pp_ui_screen_result_fail_bg.png",
+      "format": "png",
+      "width": 1280,
+      "height": 720,
+      "bytes": 8261,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_screen_result_fail_final",
+      "type": "image",
+      "url": "ui/screens/pp_ui_screen_result_fail_final.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 720,
+      "bytes": 170070,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_screen_result_success_bg",
+      "type": "image",
+      "url": "ui/screens/pp_ui_screen_result_success_bg.png",
+      "format": "png",
+      "width": 1280,
+      "height": 720,
+      "bytes": 8170,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_screen_result_success_final",
+      "type": "image",
+      "url": "ui/screens/pp_ui_screen_result_success_final.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 720,
+      "bytes": 254324,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_screen_title_bg",
+      "type": "image",
+      "url": "ui/screens/pp_ui_screen_title_bg.png",
+      "format": "png",
+      "width": 1280,
+      "height": 720,
+      "bytes": 8041,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_screen_title_final",
+      "type": "image",
+      "url": "ui/screens/pp_ui_screen_title_final.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 720,
+      "bytes": 225510,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_world_building_bakery_base",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_bakery_base.png",
+      "format": "png",
+      "width": 96,
+      "height": 80,
+      "bytes": 17179,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_building_bakery_damaged",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_bakery_damaged.png",
+      "format": "png",
+      "width": 96,
+      "height": 80,
+      "bytes": 14917,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_building_cat_house_base",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_cat_house_base.png",
+      "format": "png",
+      "width": 80,
+      "height": 72,
+      "bytes": 12069,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_building_cat_house_roof_fg",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_cat_house_roof_fg.png",
+      "format": "png",
+      "width": 80,
+      "height": 32,
+      "bytes": 4733,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_building_house_a",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_house_a.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 8490,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_building_house_b",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_house_b.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 8463,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_building_power_station_base",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_power_station_base.png",
+      "format": "png",
+      "width": 80,
+      "height": 72,
+      "bytes": 10533,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_building_power_station_restored",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_power_station_restored.png",
+      "format": "png",
+      "width": 80,
+      "height": 72,
+      "bytes": 10745,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_building_rescue_hq",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_rescue_hq.png",
+      "format": "png",
+      "width": 112,
+      "height": 80,
+      "bytes": 19560,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_building_shop",
+      "type": "image",
+      "url": "world/buildings/pp_world_building_shop.png",
+      "format": "png",
+      "width": 80,
+      "height": 64,
+      "bytes": 11770,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_bridge_broken",
+      "type": "image",
+      "url": "world/incidents/pp_world_bridge_broken.png",
+      "format": "png",
+      "width": 160,
+      "height": 48,
+      "bytes": 6742,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_bridge_intact",
+      "type": "image",
+      "url": "world/incidents/pp_world_bridge_intact.png",
+      "format": "png",
+      "width": 160,
+      "height": 48,
+      "bytes": 6818,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_bridge_repaired",
+      "type": "image",
+      "url": "world/incidents/pp_world_bridge_repaired.png",
+      "format": "png",
+      "width": 160,
+      "height": 48,
+      "bytes": 6744,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_bridge_repairing",
+      "type": "image",
+      "url": "world/incidents/pp_world_bridge_repairing.png",
+      "format": "png",
+      "width": 160,
+      "height": 48,
+      "bytes": 6990,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_generator_off",
+      "type": "image",
+      "url": "world/incidents/pp_world_generator_off.png",
+      "format": "png",
+      "width": 48,
+      "height": 48,
+      "bytes": 331,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_generator_on",
+      "type": "image",
+      "url": "world/incidents/pp_world_generator_on.png",
+      "format": "png",
+      "width": 192,
+      "height": 48,
+      "bytes": 503,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_generator_repairing",
+      "type": "image",
+      "url": "world/incidents/pp_world_generator_repairing.png",
+      "format": "png",
+      "width": 288,
+      "height": 48,
+      "bytes": 1316,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_generator_sparking",
+      "type": "image",
+      "url": "world/incidents/pp_world_generator_sparking.png",
+      "format": "png",
+      "width": 192,
+      "height": 48,
+      "bytes": 772,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_incident_marker_bridge",
+      "type": "image",
+      "url": "world/incidents/pp_world_incident_marker_bridge.png",
+      "format": "png",
+      "width": 32,
+      "height": 48,
+      "bytes": 456,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_incident_marker_cat",
+      "type": "image",
+      "url": "world/incidents/pp_world_incident_marker_cat.png",
+      "format": "png",
+      "width": 32,
+      "height": 48,
+      "bytes": 460,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_incident_marker_fire",
+      "type": "image",
+      "url": "world/incidents/pp_world_incident_marker_fire.png",
+      "format": "png",
+      "width": 32,
+      "height": 48,
+      "bytes": 505,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_incident_marker_generator",
+      "type": "image",
+      "url": "world/incidents/pp_world_incident_marker_generator.png",
+      "format": "png",
+      "width": 32,
+      "height": 48,
+      "bytes": 466,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_incident_marker_pulse",
+      "type": "image",
+      "url": "world/incidents/pp_world_incident_marker_pulse.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 461,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_path_arrow",
+      "type": "image",
+      "url": "world/incidents/pp_world_path_arrow.png",
+      "format": "png",
+      "width": 128,
+      "height": 16,
+      "bytes": 264,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_target_ring",
+      "type": "image",
+      "url": "world/incidents/pp_world_target_ring.png",
+      "format": "png",
+      "width": 192,
+      "height": 32,
+      "bytes": 323,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_stage_01_preview",
+      "type": "image",
+      "url": "world/maps/pp_stage_01_preview.webp",
+      "format": "webp",
+      "width": 1280,
+      "height": 544,
+      "bytes": 225554,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_world_prop_barrier",
+      "type": "image",
+      "url": "world/props/pp_world_prop_barrier.png",
+      "format": "png",
+      "width": 64,
+      "height": 16,
+      "bytes": 1167,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_bench",
+      "type": "image",
+      "url": "world/props/pp_world_prop_bench.png",
+      "format": "png",
+      "width": 64,
+      "height": 16,
+      "bytes": 1208,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_bush",
+      "type": "image",
+      "url": "world/props/pp_world_prop_bush.png",
+      "format": "png",
+      "width": 96,
+      "height": 24,
+      "bytes": 2893,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_crate",
+      "type": "image",
+      "url": "world/props/pp_world_prop_crate.png",
+      "format": "png",
+      "width": 16,
+      "height": 16,
+      "bytes": 824,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_evacuate_flag",
+      "type": "image",
+      "url": "world/props/pp_world_prop_evacuate_flag.png",
+      "format": "png",
+      "width": 24,
+      "height": 32,
+      "bytes": 1279,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_fence",
+      "type": "image",
+      "url": "world/props/pp_world_prop_fence.png",
+      "format": "png",
+      "width": 160,
+      "height": 16,
+      "bytes": 931,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_flower_patch",
+      "type": "image",
+      "url": "world/props/pp_world_prop_flower_patch.png",
+      "format": "png",
+      "width": 64,
+      "height": 16,
+      "bytes": 2212,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_hydrant",
+      "type": "image",
+      "url": "world/props/pp_world_prop_hydrant.png",
+      "format": "png",
+      "width": 16,
+      "height": 24,
+      "bytes": 576,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_roof_ladder",
+      "type": "image",
+      "url": "world/props/pp_world_prop_roof_ladder.png",
+      "format": "png",
+      "width": 16,
+      "height": 48,
+      "bytes": 248,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_sign_incident",
+      "type": "image",
+      "url": "world/props/pp_world_prop_sign_incident.png",
+      "format": "png",
+      "width": 24,
+      "height": 32,
+      "bytes": 633,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_streetlamp",
+      "type": "image",
+      "url": "world/props/pp_world_prop_streetlamp.png",
+      "format": "png",
+      "width": 32,
+      "height": 32,
+      "bytes": 1259,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_prop_tree",
+      "type": "image",
+      "url": "world/props/pp_world_prop_tree.png",
+      "format": "png",
+      "width": 128,
+      "height": 48,
+      "bytes": 8165,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_tile_flower_sway",
+      "type": "image",
+      "url": "world/tilesets/pp_world_tile_flower_sway.png",
+      "format": "png",
+      "width": 64,
+      "height": 16,
+      "bytes": 186,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_tile_water_loop",
+      "type": "spritesheet",
+      "url": "world/tilesets/pp_world_tile_water_loop.png",
+      "format": "png",
+      "width": 64,
+      "height": 16,
+      "bytes": 147,
+      "priority": "P1"
+    },
+    {
+      "key": "pp_world_tileset_terrain_core",
+      "type": "image",
+      "url": "world/tilesets/pp_world_tileset_terrain_core.png",
+      "format": "png",
+      "width": 256,
+      "height": 256,
+      "bytes": 1600,
+      "priority": "P1"
+    }
+  ],
+  "animations": [
+    {
+      "key": "pp_char_robot_aqua_idle",
+      "asset": "characters/robots/pp_char_robot_aqua_idle.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_aqua_walk",
+      "asset": "characters/robots/pp_char_robot_aqua_walk.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_aqua_extinguish",
+      "asset": "characters/robots/pp_char_robot_aqua_extinguish.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 8,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 10,
+      "repeat": 0,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": [
+        {
+          "frame": 2,
+          "event": "water-start"
+        },
+        {
+          "frame": 7,
+          "event": "water-end"
+        }
+      ]
+    },
+    {
+      "key": "pp_char_robot_aqua_celebrate",
+      "asset": "characters/robots/pp_char_robot_aqua_celebrate.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": 1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_aqua_fail",
+      "asset": "characters/robots/pp_char_robot_aqua_fail.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_fix_idle",
+      "asset": "characters/robots/pp_char_robot_fix_idle.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_fix_walk",
+      "asset": "characters/robots/pp_char_robot_fix_walk.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_fix_repair",
+      "asset": "characters/robots/pp_char_robot_fix_repair.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 8,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 10,
+      "repeat": 0,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": [
+        {
+          "frame": 3,
+          "event": "impact"
+        },
+        {
+          "frame": 6,
+          "event": "impact"
+        }
+      ]
+    },
+    {
+      "key": "pp_char_robot_fix_celebrate",
+      "asset": "characters/robots/pp_char_robot_fix_celebrate.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": 1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_fix_fail",
+      "asset": "characters/robots/pp_char_robot_fix_fail.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_buddy_idle",
+      "asset": "characters/robots/pp_char_robot_buddy_idle.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_buddy_walk",
+      "asset": "characters/robots/pp_char_robot_buddy_walk.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_buddy_rescue",
+      "asset": "characters/robots/pp_char_robot_buddy_rescue.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 8,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 10,
+      "repeat": 0,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": [
+        {
+          "frame": 4,
+          "event": "carry-socket"
+        }
+      ]
+    },
+    {
+      "key": "pp_char_robot_buddy_celebrate",
+      "asset": "characters/robots/pp_char_robot_buddy_celebrate.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": 1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_buddy_fail",
+      "asset": "characters/robots/pp_char_robot_buddy_fail.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_robot_buddy_carry_walk",
+      "asset": "characters/robots/pp_char_robot_buddy_carry_walk.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_a_idle",
+      "asset": "characters/npcs/pp_char_npc_a_idle.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_a_panic",
+      "asset": "characters/npcs/pp_char_npc_a_panic.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_a_evacuate_walk",
+      "asset": "characters/npcs/pp_char_npc_a_evacuate_walk.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_a_cheer",
+      "asset": "characters/npcs/pp_char_npc_a_cheer.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": 1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_b_idle",
+      "asset": "characters/npcs/pp_char_npc_b_idle.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_b_panic",
+      "asset": "characters/npcs/pp_char_npc_b_panic.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_b_evacuate_walk",
+      "asset": "characters/npcs/pp_char_npc_b_evacuate_walk.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_b_cheer",
+      "asset": "characters/npcs/pp_char_npc_b_cheer.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": 1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_c_idle",
+      "asset": "characters/npcs/pp_char_npc_c_idle.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_c_panic",
+      "asset": "characters/npcs/pp_char_npc_c_panic.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_c_evacuate_walk",
+      "asset": "characters/npcs/pp_char_npc_c_evacuate_walk.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_c_cheer",
+      "asset": "characters/npcs/pp_char_npc_c_cheer.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": 1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_d_idle",
+      "asset": "characters/npcs/pp_char_npc_d_idle.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 4,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_d_panic",
+      "asset": "characters/npcs/pp_char_npc_d_panic.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_d_evacuate_walk",
+      "asset": "characters/npcs/pp_char_npc_d_evacuate_walk.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 4,
+      "directions": [
+        "down",
+        "left",
+        "right",
+        "up"
+      ],
+      "fps": 8,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_npc_d_cheer",
+      "asset": "characters/npcs/pp_char_npc_d_cheer.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerRow": 6,
+      "rows": 1,
+      "directions": [
+        "down"
+      ],
+      "fps": 8,
+      "repeat": 1,
+      "origin": [
+        0.5,
+        0.875
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_cat_idle",
+      "asset": "characters/cat/pp_char_cat_idle.png",
+      "frameWidth": 24,
+      "frameHeight": 24,
+      "framesPerRow": 4,
+      "rows": 1,
+      "fps": 4,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.9
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_cat_meow",
+      "asset": "characters/cat/pp_char_cat_meow.png",
+      "frameWidth": 24,
+      "frameHeight": 24,
+      "framesPerRow": 4,
+      "rows": 1,
+      "fps": 6,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.9
+      ],
+      "events": []
+    },
+    {
+      "key": "pp_char_cat_hop",
+      "asset": "characters/cat/pp_char_cat_hop.png",
+      "frameWidth": 24,
+      "frameHeight": 24,
+      "framesPerRow": 6,
+      "rows": 1,
+      "fps": 10,
+      "repeat": 0,
+      "origin": [
+        0.5,
+        0.9
+      ],
+      "events": [
+        {
+          "frame": 3,
+          "event": "apex"
+        },
+        {
+          "frame": 5,
+          "event": "land"
+        }
+      ]
+    },
+    {
+      "key": "pp_char_cat_rescued",
+      "asset": "characters/cat/pp_char_cat_rescued.png",
+      "frameWidth": 24,
+      "frameHeight": 24,
+      "framesPerRow": 4,
+      "rows": 1,
+      "fps": 6,
+      "repeat": -1,
+      "origin": [
+        0.5,
+        0.9
+      ],
+      "events": []
+    }
+  ]
+}
