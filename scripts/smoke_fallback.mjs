@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import { chromium } from "playwright";
+import { collectPageErrors, waitForOperationState } from "./qa_helpers.mjs";
+
+const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3100";
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const errors = collectPageErrors(page);
+await page.route("**/api/plan", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "OPENAI_UNAVAILABLE" }) }));
+await page.goto(`${baseUrl}/?screen=play&phase=idle&stepMs=400`, { waitUntil: "networkidle" });
+await page.locator("canvas").waitFor();
+await page.getByRole("button", { name: "명령 분석" }).click();
+await page.getByText("LOCAL").waitFor();
+await page.getByText("순서: 화재 → 다리 → 고양이 → 발전기").waitFor();
+await page.getByRole("button", { name: "작전 실행" }).click();
+await waitForOperationState(page, "complete", ["fire", "bridge", "cat", "generator"]);
+await page.getByText("완벽한 구조 작전!").waitFor({ timeout: 5_000 });
+await page.getByText("4/4").waitFor();
+await browser.close();
+assert.deepEqual(errors, []);
+console.log("Fallback smoke PASSED: API 503 → LOCAL → full success");

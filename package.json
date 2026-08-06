@@ -2,10 +2,18 @@
   "name": "pixel-panic-ai-rescue",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <23"
+  },
   "scripts": {
+    "setup": "./scripts/bootstrap_dev.sh",
     "dev": "next dev",
     "build": "next build",
+    "build:test": "NEXT_PUBLIC_ENABLE_TEST_DEBUG=1 next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit && npm --prefix backend run typecheck",
+    "test:unit": "tsx --test lib/*.test.ts",
+    "test:backend": "npm --prefix backend test",
     "assets:generate": ".venv/bin/python scripts/generate_phase1_assets.py && .venv/bin/python scripts/generate_phase2_assets.py && .venv/bin/python scripts/generate_phase3_4_assets.py && .venv/bin/python scripts/build_asset_manifest.py",
     "assets:generate:phase2": ".venv/bin/python scripts/generate_phase2_assets.py",
     "assets:generate:phase34": ".venv/bin/python scripts/generate_phase3_4_assets.py && .venv/bin/python scripts/build_asset_manifest.py",
@@ -14,22 +22,27 @@
     "assets:verify:phase2": ".venv/bin/python scripts/verify_phase2_assets.py",
     "assets:verify:phase34": ".venv/bin/python scripts/verify_phase3_4_assets.py",
     "qa:screenshots": "node scripts/capture_phase3_4.mjs",
+    "qa:stabilization-screenshots": "node scripts/capture_stabilization.mjs",
     "qa:smoke": "node scripts/smoke_phase3_4.mjs",
+    "qa:full": "node scripts/run_qa_with_server.mjs",
+    "qa:oci-api": "node scripts/smoke_oci_api.mjs",
     "qa:phase2": "node scripts/smoke_phase3_4.mjs",
-    "qa:phase34": "node scripts/smoke_phase3_4.mjs && node scripts/capture_phase3_4.mjs"
+    "qa:phase34": "node scripts/smoke_phase3_4.mjs && node scripts/capture_phase3_4.mjs",
+    "ci": "npm run assets:verify && npm run typecheck && npm run test:unit && npm run test:backend && npm run build:test && npm run qa:full"
   },
   "dependencies": {
-    "next": "latest",
-    "openai": "^7.4.0",
-    "phaser": "latest",
-    "react": "latest",
-    "react-dom": "latest"
+    "next": "16.3.0",
+    "openai": "7.4.0",
+    "phaser": "4.2.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "playwright": "latest",
-    "typescript": "latest"
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "playwright": "1.62.1",
+    "tsx": "4.23.8",
+    "typescript": "7.0.2"
   }
 }

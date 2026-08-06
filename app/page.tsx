@@ -1,21 +1,41 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GameCanvas, OperationPhase } from "@/components/GameCanvas";
 import { PixelButton } from "@/components/PixelButton";
 import { RobotCard } from "@/components/RobotCard";
 import { StageViewport } from "@/components/StageViewport";
+import {
+  FALLBACK_PLAN,
+  calculateGameStats,
+  canComplete,
+  deriveWorldSnapshot,
+  isIncidentId,
+  isOperationCallbackAllowed,
+  normalizePriority,
+  normalizeRescuePlan,
+  type FinishReason,
+  type GameStats,
+  type IncidentId,
+  type RescuePlan,
+  type RobotId,
+  type WorldSnapshot,
+} from "@/lib/game-state";
 
 type Screen = "loading" | "title" | "play" | "result";
 type ResultKind = "success" | "fail";
-type IncidentId = "fire" | "bridge" | "cat" | "generator";
-type RobotId = "aqua" | "fix" | "buddy";
-type RescuePlan = {
-  summary: string;
-  priority: IncidentId[];
-  assignments: Array<{ robot: RobotId; incidents: IncidentId[]; reason: string }>;
-};
 type PlanSource = "openai" | "fallback";
+
+declare global {
+  interface Window {
+    __PIXEL_PANIC_DEBUG__?: {
+      phase: OperationPhase;
+      completedIncidents: IncidentId[];
+      worldSnapshot: WorldSnapshot;
+      finishReason: FinishReason | null;
+    };
+  }
+}
 
 const ASSET = "/assets/pixel-panic";
 
@@ -42,16 +62,6 @@ const incidentNames: Record<IncidentId, string> = {
 
 const robotNames: Record<RobotId, string> = { aqua: "AQUA", fix: "FIX", buddy: "BUDDY" };
 
-const fallbackPlan: RescuePlan = {
-  summary: "세 로봇의 전문 역할에 맞춰 안전한 기본 구조 작전을 준비했습니다.",
-  priority: ["fire", "bridge", "cat", "generator"],
-  assignments: [
-    { robot: "aqua", incidents: ["fire"], reason: "화재 진압과 냉각에 특화" },
-    { robot: "fix", incidents: ["bridge", "generator"], reason: "시설과 전력 복구에 특화" },
-    { robot: "buddy", incidents: ["cat"], reason: "생명 구조와 안전 운반에 특화" },
-  ],
-};
-
 const essentialAssets = [
   `${ASSET}/ui/screens/pp_ui_screen_title_final.webp`,
   `${ASSET}/ui/screens/pp_ui_screen_result_success_final.webp`,
@@ -61,6 +71,10 @@ const essentialAssets = [
 ];
 
 const executionPhases: OperationPhase[] = ["fire", "bridge", "cat", "generator", "complete"];
+const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
+const planUrl = apiBase ? `${apiBase}/v1/plan` : "/api/plan";
+const debugEnabled = process.env.NEXT_PUBLIC_ENABLE_TEST_DEBUG === "1";
+const ANALYSIS_TIMEOUT_MS = 7_500;
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("loading");
@@ -78,14 +92,70 @@ export default function Home() {
   const [aiPlan, setAiPlan] = useState<RescuePlan | null>(null);
   const [planSource, setPlanSource] = useState<PlanSource | null>(null);
   const [completedIncidents, setCompletedIncidents] = useState<IncidentId[]>([]);
+  const [commandsUsed, setCommandsUsed] = useState(0);
+  const [usedFallback, setUsedFallback] = useState(false);
+  const [finishReason, setFinishReason] = useState<FinishReason | null>(null);
+  const [resultStats, setResultStats] = useState<GameStats | null>(null);
   const sequenceTimers = useRef<number[]>([]);
   const analysisRequestId = useRef(0);
+  const analysisAbortRef = useRef<AbortController | null>(null);
+  const operationRunId = useRef(0);
+  const resultCommitted = useRef(false);
+  const operationStepMsRef = useRef(2_600);
+  const currentPhaseRef = useRef<OperationPhase>(phase);
+  const liveStateRef = useRef({ seconds: 90, commandsUsed: 0, completedIncidents: [] as IncidentId[], usedFallback: false });
+
+  const clearAsyncWork = useCallback(() => {
+    operationRunId.current += 1;
+    analysisRequestId.current += 1;
+    analysisAbortRef.current?.abort();
+    analysisAbortRef.current = null;
+    sequenceTimers.current.forEach(window.clearTimeout);
+    sequenceTimers.current = [];
+  }, []);
+
+  const finishGame = useCallback((kind: ResultKind, reason: FinishReason, overrides: Partial<typeof liveStateRef.current> = {}) => {
+    if (resultCommitted.current) return;
+    resultCommitted.current = true;
+    const finalState = { ...liveStateRef.current, ...overrides };
+    liveStateRef.current = finalState;
+    clearAsyncWork();
+    setShowPause(false);
+    setSeconds(finalState.seconds);
+    setCompletedIncidents(finalState.completedIncidents);
+    const stats = calculateGameStats({
+      secondsRemaining: finalState.seconds,
+      commandsUsed: finalState.commandsUsed,
+      completedIncidents: finalState.completedIncidents,
+      usedFallback: finalState.usedFallback,
+      finishReason: reason,
+    });
+    setResultStats(stats);
+    setResultKind(kind);
+    setFinishReason(reason);
+    setScreen("result");
+  }, [clearAsyncWork]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requested = params.get("screen");
     if (requested === "play") {
       setScreen("play");
+      if (debugEnabled) {
+        const testSeconds = Number(params.get("testSeconds"));
+        if (Number.isInteger(testSeconds) && testSeconds > 0 && testSeconds <= 90) {
+          liveStateRef.current.seconds = testSeconds;
+          setSeconds(testSeconds);
+        }
+        const stepMs = Number(params.get("stepMs"));
+        if (Number.isFinite(stepMs) && stepMs >= 200 && stepMs <= 2_600) operationStepMsRef.current = stepMs;
+      }
+      const requestedCompleted = (params.get("completed") ?? "").split(",").filter(isIncidentId);
+      if (requestedCompleted.length) {
+        const uniqueCompleted = [...new Set(requestedCompleted)];
+        liveStateRef.current.completedIncidents = uniqueCompleted;
+        setCompletedIncidents(uniqueCompleted);
+      }
       const requestedPhase = params.get("phase") as OperationPhase | null;
       if (["idle", "analyzing", "preview", ...executionPhases].includes(requestedPhase ?? "" as OperationPhase)) {
         setPhase(requestedPhase ?? "idle");
@@ -93,7 +163,12 @@ export default function Home() {
       return;
     }
     if (requested === "result") {
-      setResultKind(params.get("result") === "fail" ? "fail" : "success");
+      const kind = params.get("result") === "fail" ? "fail" : "success";
+      const completed = kind === "success" ? normalizePriority(null) : ["fire", "bridge"] as IncidentId[];
+      const reason: FinishReason = kind === "success" ? "completed" : "timeout";
+      setResultKind(kind);
+      setFinishReason(reason);
+      setResultStats(calculateGameStats({ secondsRemaining: kind === "success" ? 52 : 0, commandsUsed: kind === "success" ? 1 : 4, completedIncidents: completed, usedFallback: false, finishReason: reason }));
       setScreen("result");
       return;
     }
@@ -120,39 +195,49 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [loadAttempt]);
 
+  useEffect(() => { currentPhaseRef.current = phase; }, [phase]);
+
   useEffect(() => {
-    if (screen !== "play" || phase === "complete" || showPause) return;
+    if (screen !== "play" || showPause || resultCommitted.current) return;
     const timer = window.setInterval(() => {
-      setSeconds((value) => {
-        if (value <= 1) {
-          window.clearInterval(timer);
-          setResultKind("fail");
-          setScreen("result");
-          return 0;
-        }
-        return value - 1;
-      });
+      if (currentPhaseRef.current === "complete") return;
+      const next = Math.max(0, liveStateRef.current.seconds - 1);
+      liveStateRef.current.seconds = next;
+      setSeconds(next);
+      if (next === 0) finishGame("fail", "timeout", { seconds: 0 });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [screen, phase, showPause]);
+  }, [finishGame, screen, showPause]);
 
-  useEffect(() => () => sequenceTimers.current.forEach(window.clearTimeout), []);
+  useEffect(() => () => clearAsyncWork(), [clearAsyncWork]);
+
+  useEffect(() => {
+    if (!debugEnabled) return;
+    window.__PIXEL_PANIC_DEBUG__ = { phase, completedIncidents: [...completedIncidents], worldSnapshot: deriveWorldSnapshot(completedIncidents), finishReason };
+    return () => { delete window.__PIXEL_PANIC_DEBUG__; };
+  }, [completedIncidents, finishReason, phase]);
 
   const timerText = useMemo(() => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`, [seconds]);
-  const resolvedCount = phase === "complete" ? 4 : completedIncidents.length;
+  const currentStats = useMemo(() => calculateGameStats({ secondsRemaining: seconds, commandsUsed, completedIncidents, usedFallback }), [commandsUsed, completedIncidents, seconds, usedFallback]);
+  const resolvedCount = currentStats.completedIncidents.length;
   const operationRunning = executionPhases.includes(phase);
   const commandLocked = operationRunning || phase === "analyzing";
-  const activePlan = aiPlan ?? fallbackPlan;
-
-  const clearSequence = () => {
-    analysisRequestId.current += 1;
-    sequenceTimers.current.forEach(window.clearTimeout);
-    sequenceTimers.current = [];
-  };
+  const activePlan = aiPlan ?? FALLBACK_PLAN;
 
   const startGame = () => {
-    clearSequence();
-    setSeconds(90);
+    clearAsyncWork();
+    resultCommitted.current = false;
+    const params = new URLSearchParams(window.location.search);
+    const requestedSeconds = debugEnabled ? Number(params.get("testSeconds")) : 90;
+    const initialSeconds = Number.isInteger(requestedSeconds) && requestedSeconds > 0 && requestedSeconds <= 90 ? requestedSeconds : 90;
+    const requestedStepMs = debugEnabled ? Number(params.get("stepMs")) : 2_600;
+    operationStepMsRef.current = Number.isFinite(requestedStepMs) && requestedStepMs >= 200 && requestedStepMs <= 2_600 ? requestedStepMs : 2_600;
+    liveStateRef.current = { seconds: initialSeconds, commandsUsed: 0, completedIncidents: [], usedFallback: false };
+    setSeconds(initialSeconds);
+    setCommandsUsed(0);
+    setUsedFallback(false);
+    setFinishReason(null);
+    setResultStats(null);
     setPhase("idle");
     setAiPlan(null);
     setPlanSource(null);
@@ -165,54 +250,78 @@ export default function Home() {
     if (!command.trim() || phase !== "idle") return;
     const requestId = ++analysisRequestId.current;
     const startedAt = Date.now();
+    const controller = new AbortController();
+    analysisAbortRef.current?.abort();
+    analysisAbortRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
+    const nextCommandsUsed = liveStateRef.current.commandsUsed + 1;
+    liveStateRef.current.commandsUsed = nextCommandsUsed;
+    setCommandsUsed(nextCommandsUsed);
     setPhase("analyzing");
     setAiPlan(null);
     setPlanSource(null);
     setCompletedIncidents([]);
 
     try {
-      const response = await fetch("/api/plan", {
+      const response = await fetch(planUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: command.trim() }),
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error(`Plan API HTTP ${response.status}`);
       const data = await response.json() as { plan?: RescuePlan; source?: PlanSource };
-      if (!data.plan || data.source !== "openai") throw new Error("Invalid plan response");
+      const normalizedPlan = normalizeRescuePlan(data.plan);
+      if (!normalizedPlan || data.source !== "openai" && data.source !== "fallback") throw new Error("Invalid plan response");
       if (analysisRequestId.current !== requestId) return;
-      setAiPlan(data.plan);
-      setPlanSource("openai");
+      const fallback = data.source === "fallback";
+      liveStateRef.current.usedFallback = fallback;
+      setUsedFallback(fallback);
+      setAiPlan(normalizedPlan);
+      setPlanSource(data.source);
     } catch {
       if (analysisRequestId.current !== requestId) return;
-      setAiPlan(fallbackPlan);
+      liveStateRef.current.usedFallback = true;
+      setUsedFallback(true);
+      setAiPlan(FALLBACK_PLAN);
       setPlanSource("fallback");
     } finally {
+      window.clearTimeout(timeout);
+      if (analysisAbortRef.current === controller) analysisAbortRef.current = null;
       const remainingDelay = Math.max(0, 900 - (Date.now() - startedAt));
       if (remainingDelay) await new Promise((resolve) => window.setTimeout(resolve, remainingDelay));
-      if (analysisRequestId.current === requestId) setPhase("preview");
+      if (analysisRequestId.current === requestId && !resultCommitted.current) setPhase("preview");
     }
   };
 
   const execute = () => {
-    clearSequence();
-    const priority = activePlan.priority;
+    clearAsyncWork();
+    const runId = operationRunId.current;
+    const priority = normalizePriority(activePlan.priority);
+    const stepMs = operationStepMsRef.current;
+    liveStateRef.current.completedIncidents = [];
     setCompletedIncidents([]);
     setPhase(priority[0]);
     priority.slice(1).forEach((nextIncident, index) => {
       const completedCount = index + 1;
       sequenceTimers.current.push(window.setTimeout(() => {
-        setCompletedIncidents(priority.slice(0, completedCount));
+        if (!isOperationCallbackAllowed(runId, operationRunId.current, resultCommitted.current)) return;
+        const completed = priority.slice(0, completedCount);
+        liveStateRef.current.completedIncidents = completed;
+        setCompletedIncidents(completed);
         setPhase(nextIncident);
-      }, completedCount * 2600));
+      }, completedCount * stepMs));
     });
     sequenceTimers.current.push(window.setTimeout(() => {
+      if (!isOperationCallbackAllowed(runId, operationRunId.current, resultCommitted.current) || !canComplete(priority)) return;
+      liveStateRef.current.completedIncidents = priority;
       setCompletedIncidents(priority);
       setPhase("complete");
-    }, 10400));
+    }, 4 * stepMs));
     sequenceTimers.current.push(window.setTimeout(() => {
-      setResultKind("success");
-      setScreen("result");
-    }, 12500));
+      if (!isOperationCallbackAllowed(runId, operationRunId.current, resultCommitted.current) || !canComplete(priority)) return;
+      finishGame("success", "completed", { completedIncidents: priority });
+    }, 4 * stepMs + Math.max(180, Math.round(stepMs * 0.8))));
   };
 
   return (
@@ -229,28 +338,28 @@ export default function Home() {
           <TitleScreen soundOn={soundOn} onSound={() => setSoundOn((value) => !value)} onStart={startGame} onHelp={() => setShowHelp(true)} />
         )}
         {screen === "play" && (
-          <section className="game-screen" aria-label="PIXEL PANIC 게임 화면">
-            <GameCanvas phase={phase} onError={(message) => setGameError(message)} />
+          <section className="game-screen" aria-label="PIXEL PANIC 게임 화면" data-phase={phase} data-completed={completedIncidents.join(",")}>
+            <GameCanvas phase={phase} completedIncidents={completedIncidents} onError={(message) => { setGameError(message); finishGame("fail", "runtime_error"); }} />
 
             <header className="top-hud pixel-panel">
               <div className="hud-brand"><img src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" /><span><strong>PIXEL PANIC</strong><small>AI RESCUE HQ</small></span></div>
               <HudStat icon="timer" label="남은 시간" value={timerText} emphasized />
-              <HudStat icon="village_hp" label="마을 보존율" value={`${86 + resolvedCount}%`} />
+              <HudStat icon="village_hp" label="마을 보존율" value={`${currentStats.villagePreservation}%`} />
               <HudStat icon="incident_count" label="해결한 사건" value={`${resolvedCount}/4`} />
               <button className="icon-control" aria-label="일시정지" onClick={() => setShowPause(true)}><img src={`${ASSET}/ui/icons/pp_ui_icon_pause.png`} alt="" /></button>
             </header>
 
             <aside className="robot-panel pixel-panel" aria-label="구조 로봇 상태">
               <div className="panel-heading"><span>구조 로봇</span><small>ONLINE · 3</small></div>
-              <RobotCard robot="aqua" name="AQUA" role="소방·냉각" phase={phase} />
-              <RobotCard robot="fix" name="FIX" role="수리·건설" phase={phase} />
-              <RobotCard robot="buddy" name="BUDDY" role="구조·운반" phase={phase} />
+              <RobotCard robot="aqua" name="AQUA" role="소방·냉각" phase={phase} completedIncidents={completedIncidents} />
+              <RobotCard robot="fix" name="FIX" role="수리·건설" phase={phase} completedIncidents={completedIncidents} />
+              <RobotCard robot="buddy" name="BUDDY" role="구조·운반" phase={phase} completedIncidents={completedIncidents} />
             </aside>
 
             <aside className="incident-panel pixel-alert" aria-label="활성 사건">
               <div className="panel-heading"><span>긴급 상황</span><small>{resolvedCount}/4 해결</small></div>
               <div className="incident-list">
-                {incidents.map((incident, index) => {
+                {incidents.map((incident) => {
                   const resolved = completedIncidents.includes(incident.id) || phase === "complete";
                   const active = phase === incident.id;
                   return (
@@ -297,12 +406,12 @@ export default function Home() {
             {showPause && (
               <Modal title="작전 일시정지" onClose={() => setShowPause(false)}>
                 <p>타이머가 멈췄습니다. 준비되면 작전을 계속하세요.</p>
-                <div className="modal-actions"><PixelButton onClick={() => setShowPause(false)}>계속하기</PixelButton><PixelButton variant="danger" onClick={() => { clearSequence(); setShowPause(false); setResultKind("fail"); setScreen("result"); }}>작전 포기</PixelButton></div>
+                <div className="modal-actions"><PixelButton onClick={() => setShowPause(false)}>계속하기</PixelButton><PixelButton variant="danger" onClick={() => finishGame("fail", "abandoned")}>작전 포기</PixelButton></div>
               </Modal>
             )}
           </section>
         )}
-        {screen === "result" && <ResultScreen kind={resultKind} onRetry={startGame} onTitle={() => setScreen("title")} />}
+        {screen === "result" && <ResultScreen kind={resultKind} stats={resultStats ?? currentStats} finishReason={finishReason} onRetry={startGame} onTitle={() => { clearAsyncWork(); setScreen("title"); }} />}
 
         {showHelp && (
           <Modal title="플레이 방법" onClose={() => setShowHelp(false)}>
@@ -347,15 +456,17 @@ function TitleScreen({ soundOn, onSound, onStart, onHelp }: { soundOn: boolean; 
   );
 }
 
-function ResultScreen({ kind, onRetry, onTitle }: { kind: ResultKind; onRetry: () => void; onTitle: () => void }) {
+function ResultScreen({ kind, stats, finishReason, onRetry, onTitle }: { kind: ResultKind; stats: GameStats; finishReason: FinishReason | null; onRetry: () => void; onTitle: () => void }) {
   const success = kind === "success";
+  const failTitle = finishReason === "timeout" ? "구조 시간이 종료됐어요" : finishReason === "abandoned" ? "작전을 종료했습니다" : "안전 모드로 전환했어요";
+  const failCopy = finishReason === "timeout" ? "해결한 사건은 보존했습니다. 우선순위를 바꿔 다시 도전해보세요." : finishReason === "abandoned" ? "현재까지의 구조 기록을 저장했습니다." : "그래픽 실행 오류로 작전을 안전하게 종료했습니다.";
   return (
     <section className={`result-screen ${kind}`}>
       <img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_result_${kind}_final.webp`} alt={success ? "마을 주민과 구조대가 함께 축하하는 모습" : "비 내리는 마을에서 다음 출동을 준비하는 구조대"} />
       <div className="result-vignette" />
       <div className={`result-card ${success ? "pixel-success" : "pixel-alert"}`}>
-        <div className="result-copy"><span className="result-kicker">{success ? "MISSION COMPLETE" : "MISSION REPORT"}</span><img className="grade" src={`${ASSET}/ui/pp_ui_grade_${success ? "s" : "f"}.png`} alt={`${success ? "S" : "F"} 등급`} /><div><h1>{success ? "완벽한 구조 작전!" : "다시 출동할 시간이에요"}</h1><p>{success ? "세 로봇의 협동으로 모든 사건을 해결했습니다." : "역할과 우선순위를 바꾸면 다음 작전은 성공할 수 있어요."}</p></div></div>
-        <div className="result-stats"><ResultStat icon="rescued" label="구조" value={success ? "5명" : "2명"} /><ResultStat icon="incident_count" label="사건 해결" value={success ? "4/4" : "2/4"} /><ResultStat icon="village_hp" label="마을 보존" value={success ? "94%" : "46%"} /><ResultStat icon="command_count" label="사용 명령" value={success ? "1회" : "4회"} /></div>
+        <div className="result-copy"><span className="result-kicker">{success ? "MISSION COMPLETE" : "MISSION REPORT"}</span><img className="grade" src={`${ASSET}/ui/pp_ui_grade_${stats.grade.toLowerCase()}.png`} alt={`${stats.grade} 등급`} /><div><h1>{success ? stats.grade === "S" ? "완벽한 구조 작전!" : "구조 작전 성공!" : failTitle}</h1><p>{success ? "세 로봇의 협동으로 모든 사건을 해결했습니다." : failCopy}</p></div></div>
+        <div className="result-stats"><ResultStat icon="rescued" label="구조" value={`${stats.rescuedCount}명`} /><ResultStat icon="incident_count" label="사건 해결" value={`${stats.completedIncidents.length}/4`} /><ResultStat icon="village_hp" label="마을 보존" value={`${stats.villagePreservation}%`} /><ResultStat icon="command_count" label="사용 명령" value={`${stats.commandsUsed}회`} /></div>
         <div className="result-actions"><PixelButton onClick={onRetry}>다시 출동</PixelButton><PixelButton variant="secondary" onClick={onTitle}>본부로</PixelButton></div>
       </div>
     </section>

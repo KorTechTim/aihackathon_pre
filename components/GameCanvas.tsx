@@ -1,25 +1,30 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { canComplete, deriveWorldSnapshot, type IncidentId, type RobotId } from "@/lib/game-state";
 
 export type OperationPhase = "idle" | "analyzing" | "preview" | "fire" | "bridge" | "cat" | "generator" | "complete";
 
-type IncidentId = "fire" | "bridge" | "cat" | "generator";
-type RobotId = "aqua" | "fix" | "buddy";
 type StageIncident = { properties: { incident_id: IncidentId; interaction_tile: [number, number]; marker_pixel: [number, number] } };
 type StageSpawnData = { runtimeHudOffsetY: number; actors: Array<{ id: RobotId; pixel: [number, number] }>; incidents: StageIncident[] };
+type CollisionData = { width: number; height: number; blocked: number[] };
 
 const ASSET = "/assets/pixel-panic";
 const ROBOTS: RobotId[] = ["aqua", "fix", "buddy"];
 const INCIDENTS: IncidentId[] = ["fire", "bridge", "cat", "generator"];
 
-export function GameCanvas({ phase, onError }: { phase: OperationPhase; onError?: (message: string) => void }) {
+export function GameCanvas({ phase, completedIncidents, onError }: { phase: OperationPhase; completedIncidents: readonly IncidentId[]; onError?: (message: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const phaseRef = useRef(phase);
+  const completedRef = useRef<readonly IncidentId[]>(completedIncidents);
   const errorRef = useRef(onError);
-  const sceneRef = useRef<{ setOperationPhase: (next: OperationPhase) => void } | null>(null);
+  const sceneRef = useRef<{ setOperationState: (next: OperationPhase, completed: readonly IncidentId[]) => void } | null>(null);
 
-  useEffect(() => { phaseRef.current = phase; sceneRef.current?.setOperationPhase(phase); }, [phase]);
+  useEffect(() => {
+    phaseRef.current = phase;
+    completedRef.current = completedIncidents;
+    sceneRef.current?.setOperationState(phase, completedIncidents);
+  }, [phase, completedIncidents]);
   useEffect(() => { errorRef.current = onError; }, [onError]);
 
   useEffect(() => {
@@ -32,6 +37,7 @@ export function GameCanvas({ phase, onError }: { phase: OperationPhase; onError?
 
       class RescueScene extends Phaser.Scene {
         private robots = new Map<RobotId, Phaser.GameObjects.Sprite>();
+        private shadows = new Map<RobotId, Phaser.GameObjects.Image>();
         private markers = new Map<IncidentId, Phaser.GameObjects.Image>();
         private starts = new Map<RobotId, [number, number]>();
         private targets = new Map<IncidentId, [number, number]>();
@@ -50,7 +56,10 @@ export function GameCanvas({ phase, onError }: { phase: OperationPhase; onError?
         private bridge?: Phaser.GameObjects.Image;
         private generator?: Phaser.GameObjects.Sprite;
         private planLines?: Phaser.GameObjects.Graphics;
+        private collision?: CollisionData;
+        private hudOffsetY = 64;
         private currentPhase: OperationPhase = "idle";
+        private completedSignature = "";
 
         constructor() { super("rescue"); }
 
@@ -90,12 +99,14 @@ export function GameCanvas({ phase, onError }: { phase: OperationPhase; onError?
 
         create() {
           const stage = this.cache.json.get("stage-data") as { width: number; height: number; runtimeScale: number };
-          const collision = this.cache.json.get("collision") as { blocked: number[] };
+          const collision = this.cache.json.get("collision") as CollisionData;
           const spawnData = this.cache.json.get("spawns") as StageSpawnData;
           if (stage.width !== 40 || stage.height !== 17 || stage.runtimeScale !== 2 || collision.blocked.length !== 680) {
             errorRef.current?.("스테이지 데이터 검증에 실패했습니다.");
             return;
           }
+          this.collision = collision;
+          this.hudOffsetY = spawnData.runtimeHudOffsetY;
 
           this.add.image(0, 64, "stage").setOrigin(0);
           this.createAnimations();
@@ -107,10 +118,11 @@ export function GameCanvas({ phase, onError }: { phase: OperationPhase; onError?
             if (!actor) continue;
             const start: [number, number] = [actor.pixel[0], actor.pixel[1] + spawnData.runtimeHudOffsetY];
             this.starts.set(robot, start);
-            this.add.image(start[0], start[1] + 10, "shadow").setScale(2).setDepth(8).setAlpha(0.55);
+            const shadow = this.add.image(start[0], start[1] + 10, "shadow").setScale(2).setDepth(8).setAlpha(0.55);
             const sprite = this.add.sprite(start[0], start[1], `${robot}-idle`).setScale(2).setOrigin(0.5, 0.875).setDepth(10);
             sprite.play(`${robot}-idle-anim`);
             this.robots.set(robot, sprite);
+            this.shadows.set(robot, shadow);
           }
 
           for (const incident of INCIDENTS) {
@@ -146,7 +158,7 @@ export function GameCanvas({ phase, onError }: { phase: OperationPhase; onError?
           const npcPositions: [number, number][] = [[400, 360], [546, 250], [720, 450], [930, 430]];
           this.residents = ["a", "b", "c", "d"].map((npc, index) => this.add.sprite(npcPositions[index][0], npcPositions[index][1], `npc-${npc}-idle`).setScale(2).setOrigin(0.5, 0.875).setDepth(9).play(`npc-${npc}-idle-anim`));
           sceneRef.current = this;
-          this.setOperationPhase(phaseRef.current);
+          this.setOperationState(phaseRef.current, completedRef.current);
         }
 
         private createAnimations() {
@@ -167,49 +179,143 @@ export function GameCanvas({ phase, onError }: { phase: OperationPhase; onError?
           add("generator-on-anim", "generator-on", 3, 5);
         }
 
-        private resetSnapshot(resolved: number) {
-          this.planLines?.clear();
+        private resetActorsToBase() {
           for (const robot of ROBOTS) {
             const sprite = this.robots.get(robot);
+            const shadow = this.shadows.get(robot);
             const start = this.starts.get(robot);
             if (!sprite || !start) continue;
             this.tweens.killTweensOf(sprite);
             sprite.setPosition(start[0], start[1]).setAlpha(1).setVisible(true).play(`${robot}-idle-anim`, true);
+            shadow?.setPosition(start[0], start[1] + 10).setVisible(true);
           }
-          INCIDENTS.forEach((incident, index) => {
+        }
+
+        private applyWorldSnapshot(completed: readonly IncidentId[]) {
+          const snapshot = deriveWorldSnapshot(completed);
+          if (containerRef.current) {
+            containerRef.current.dataset.worldCompleted = INCIDENTS.filter((incident) => completed.includes(incident)).join(",");
+            containerRef.current.dataset.worldResolvedCount = String(snapshot.resolvedCount);
+          }
+          this.planLines?.clear();
+          for (const robot of ROBOTS) this.robots.get(robot)?.play(`${robot}-idle-anim`, true);
+          INCIDENTS.forEach((incident) => {
+            const resolved = completed.includes(incident);
             const marker = this.markers.get(incident);
-            if (marker) marker.setAlpha(index < resolved ? 0.18 : 1).setScale(index < resolved ? 1.35 : 2);
+            if (marker) marker.setAlpha(resolved ? 0.18 : 1).setScale(resolved ? 1.35 : 2);
           });
-          this.fire?.setVisible(resolved < 1).setAlpha(1).play("fire-loop", true);
-          this.smoke?.setVisible(resolved < 1).setAlpha(1).play("smoke-loop", true);
+          this.fire?.setVisible(!snapshot.fireResolved).setAlpha(1).play("fire-loop", true);
+          this.smoke?.setVisible(!snapshot.fireResolved).setAlpha(1).play("smoke-loop", true);
           this.water?.setVisible(false); this.steam?.setVisible(false); this.sparks?.setVisible(false); this.hearts?.setVisible(false); this.restore?.setVisible(false); this.confetti?.setVisible(false);
-          this.bridge?.setTexture(resolved >= 2 ? "bridge-repaired" : "bridge-broken");
-          this.cat?.setVisible(resolved < 3).play("cat-idle-anim", true);
-          if (resolved >= 4) this.generator?.setTexture("generator-on", 0).play("generator-on-anim", true);
+          this.bridge?.setTexture(snapshot.bridgeResolved ? "bridge-repaired" : "bridge-broken");
+          this.cat?.setVisible(!snapshot.catResolved).play("cat-idle-anim", true);
+          if (snapshot.generatorResolved) this.generator?.setTexture("generator-on", 0).play("generator-on-anim", true);
           else this.generator?.stop().setTexture("generator-off");
-          this.electricity?.setVisible(resolved < 4).play("electric-loop", true);
+          this.electricity?.setVisible(!snapshot.generatorResolved).play("electric-loop", true);
           this.residents.forEach((resident, index) => resident.play(`npc-${["a", "b", "c", "d"][index]}-idle-anim`, true));
+        }
+
+        private findWalkPath(fromX: number, fromY: number, toX: number, toY: number): Array<[number, number]> {
+          const collision = this.collision;
+          if (!collision) return [[toX, toY]];
+          const toTile = (x: number, y: number): [number, number] => [
+            Math.max(0, Math.min(collision.width - 1, Math.floor(x / 32))),
+            Math.max(0, Math.min(collision.height - 1, Math.floor((y - this.hudOffsetY) / 32))),
+          ];
+          const start = toTile(fromX, fromY);
+          const goal = toTile(toX, toY);
+          const key = (x: number, y: number) => y * collision.width + x;
+          const queue: Array<[number, number]> = [start];
+          const previous = new Map<number, number>();
+          const visited = new Set<number>([key(...start)]);
+          const goalKey = key(...goal);
+
+          for (let cursor = 0; cursor < queue.length && !visited.has(goalKey); cursor += 1) {
+            const [x, y] = queue[cursor];
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+              const nx = x + dx; const ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= collision.width || ny >= collision.height) continue;
+              const nextKey = key(nx, ny);
+              if (visited.has(nextKey) || collision.blocked[nextKey] === 1 && nextKey !== goalKey) continue;
+              visited.add(nextKey); previous.set(nextKey, key(x, y)); queue.push([nx, ny]);
+            }
+          }
+          if (!visited.has(goalKey)) return [[toX, toY]];
+
+          const tiles: Array<[number, number]> = [];
+          let cursor = goalKey;
+          while (cursor !== key(...start)) {
+            tiles.push([cursor % collision.width, Math.floor(cursor / collision.width)]);
+            const prior = previous.get(cursor);
+            if (prior === undefined) return [[toX, toY]];
+            cursor = prior;
+          }
+          tiles.reverse();
+          const points: Array<[number, number]> = [];
+          let priorDirection = "";
+          for (let index = 0; index < tiles.length; index += 1) {
+            const previousTile = index === 0 ? start : tiles[index - 1];
+            const tile = tiles[index];
+            const direction = `${tile[0] - previousTile[0]},${tile[1] - previousTile[1]}`;
+            if (index > 0 && direction !== priorDirection) {
+              const turn = tiles[index - 1];
+              points.push([turn[0] * 32 + 16, turn[1] * 32 + 16 + this.hudOffsetY]);
+            }
+            priorDirection = direction;
+          }
+          points.push([toX, toY]);
+          return points;
         }
 
         private moveRobot(robot: RobotId, incident: IncidentId, duration: number, onArrive: () => void) {
           const sprite = this.robots.get(robot); const target = this.targets.get(incident);
           if (!sprite || !target) return;
+          const shadow = this.shadows.get(robot);
+          this.tweens.killTweensOf(sprite);
           sprite.play(`${robot}-walk-anim`, true);
-          this.tweens.add({ targets: sprite, x: target[0], y: target[1], duration, ease: "Sine.easeInOut", onComplete: () => { sprite.play(`${robot}-action-anim`, true); onArrive(); } });
+          const points = this.findWalkPath(sprite.x, sprite.y, target[0], target[1]);
+          const distances = points.map((point, index) => {
+            const from = index === 0 ? [sprite.x, sprite.y] : points[index - 1];
+            return Math.hypot(point[0] - from[0], point[1] - from[1]);
+          });
+          const totalDistance = Math.max(1, distances.reduce((sum, distance) => sum + distance, 0));
+          const walk = (index: number) => {
+            const point = points[index];
+            if (!point) {
+              sprite.play(`${robot}-action-anim`, true);
+              onArrive();
+              return;
+            }
+            this.tweens.add({
+              targets: sprite,
+              x: point[0], y: point[1],
+              duration: Math.max(90, duration * distances[index] / totalDistance),
+              ease: "Linear",
+              onUpdate: () => shadow?.setPosition(sprite.x, sprite.y + 10),
+              onComplete: () => walk(index + 1),
+            });
+          };
+          walk(0);
         }
 
-        setOperationPhase(next: OperationPhase) {
-          if (!this.planLines || this.robots.size === 0 || next === this.currentPhase && next !== "idle") return;
+        setOperationState(next: OperationPhase, completed: readonly IncidentId[]) {
+          if (!this.planLines || this.robots.size === 0) return;
+          const signature = [...completed].sort().join(",");
+          if (next === this.currentPhase && signature === this.completedSignature && next !== "idle") return;
+          if (next === "complete" && !canComplete(completed)) return;
+          const phaseChanged = next !== this.currentPhase;
           this.currentPhase = next;
-          const resolved = next === "bridge" ? 1 : next === "cat" ? 2 : next === "generator" ? 3 : next === "complete" ? 4 : 0;
-          this.resetSnapshot(resolved);
+          this.completedSignature = signature;
+          if (next === "idle") this.resetActorsToBase();
+          this.applyWorldSnapshot(completed);
+          if (!phaseChanged && next !== "idle") return;
 
           if (next === "analyzing") this.cameras.main.flash(180, 57, 191, 242, false);
           if (next === "preview") {
             const assignments: Array<[RobotId, IncidentId, number]> = [["aqua", "fire", 0x39bff2], ["fix", "bridge", 0xffd34e], ["buddy", "cat", 0xff6577]];
             for (const [robot, incident, color] of assignments) {
-              const from = this.starts.get(robot); const to = this.markerTargets.get(incident); if (!from || !to) continue;
-              this.planLines.lineStyle(5, color, 0.78); this.planLines.lineBetween(from[0], from[1], to[0], to[1]);
+              const sprite = this.robots.get(robot); const to = this.markerTargets.get(incident); if (!sprite || !to) continue;
+              this.planLines.lineStyle(5, color, 0.78); this.planLines.lineBetween(sprite.x, sprite.y, to[0], to[1]);
             }
           }
           if (next === "fire") this.moveRobot("aqua", "fire", 900, () => { this.water?.setVisible(true).play("water-loop"); this.tweens.add({ targets: [this.fire, this.smoke], alpha: 0.35, duration: 1200 }); this.steam?.setVisible(true).play("steam-once"); });
@@ -218,7 +324,12 @@ export function GameCanvas({ phase, onError }: { phase: OperationPhase; onError?
           if (next === "generator") this.moveRobot("fix", "generator", 1100, () => { this.restore?.setVisible(true).play("restore-once"); this.electricity?.setVisible(false); this.generator?.setTexture("generator-on", 0).play("generator-on-anim", true); });
           if (next === "complete") {
             const positions: [number, number][] = [[555, 430], [640, 420], [725, 430]];
-            ROBOTS.forEach((robot, index) => { const sprite = this.robots.get(robot); if (sprite) sprite.setPosition(...positions[index]).play(`${robot}-celebrate-anim`, true); });
+            ROBOTS.forEach((robot, index) => {
+              const sprite = this.robots.get(robot);
+              if (!sprite) return;
+              sprite.setPosition(...positions[index]).play(`${robot}-celebrate-anim`, true);
+              this.shadows.get(robot)?.setPosition(positions[index][0], positions[index][1] + 10);
+            });
             this.residents.forEach((resident, index) => resident.play(`npc-${["a", "b", "c", "d"][index]}-cheer-anim`, true));
             this.confetti?.setVisible(true).play("confetti-once");
             this.cameras.main.flash(320, 255, 211, 78, false);
@@ -233,5 +344,5 @@ export function GameCanvas({ phase, onError }: { phase: OperationPhase; onError?
     return () => { disposed = true; sceneRef.current = null; game?.destroy(true); };
   }, []);
 
-  return <div className="phaser-canvas" ref={containerRef} aria-label="도트 마을 구조 작전 애니메이션" role="img" />;
+  return <div className="phaser-canvas" ref={containerRef} data-world-completed="" data-world-resolved-count="0" aria-label="도트 마을 구조 작전 애니메이션" role="img" />;
 }

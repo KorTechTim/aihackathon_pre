@@ -1,0 +1,42 @@
+{
+  "displayName": "pixel-panic-api-production",
+  "pathPrefix": "/",
+  "specification": {
+    "loggingPolicies": {
+      "accessLog": { "isEnabled": true },
+      "executionLog": { "isEnabled": true, "logLevel": "INFO" }
+    },
+    "requestPolicies": {
+      "cors": {
+        "allowedOrigins": ["https://pixel-panic-ai-rescue.vercel.app"],
+        "allowedMethods": ["GET", "POST", "OPTIONS"],
+        "allowedHeaders": ["Content-Type", "X-Request-Id"],
+        "isAllowCredentialsEnabled": false
+      }
+    },
+    "routes": [
+      {
+        "path": "/health",
+        "methods": ["GET"],
+        "backend": {
+          "type": "HTTP_BACKEND",
+          "url": "http://10.0.1.10:8080/health",
+          "connectTimeoutInSeconds": 3,
+          "readTimeoutInSeconds": 5,
+          "sendTimeoutInSeconds": 5
+        }
+      },
+      {
+        "path": "/v1/plan",
+        "methods": ["POST", "OPTIONS"],
+        "backend": {
+          "type": "HTTP_BACKEND",
+          "url": "http://10.0.1.10:8080/v1/plan",
+          "connectTimeoutInSeconds": 3,
+          "readTimeoutInSeconds": 8,
+          "sendTimeoutInSeconds": 8
+        }
+      }
+    ]
+  }
+}

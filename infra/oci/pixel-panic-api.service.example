@@ -1,0 +1,20 @@
+[Unit]
+Description=PIXEL PANIC API container
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=pixelpanic
+Group=pixelpanic
+WorkingDirectory=/opt/pixel-panic/infra/oci
+ExecStart=/usr/bin/docker compose --env-file .env.production up -d --build --remove-orphans
+ExecReload=/usr/bin/docker compose --env-file .env.production up -d --build --remove-orphans
+ExecStop=/usr/bin/docker compose --env-file .env.production down
+TimeoutStartSec=180
+TimeoutStopSec=45
+
+[Install]
+WantedBy=multi-user.target

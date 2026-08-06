@@ -1,0 +1,56 @@
+import { pathToFileURL } from "node:url";
+import cors from "@fastify/cors";
+import Fastify, { type FastifyInstance } from "fastify";
+import { loadConfig, type AppConfig } from "./config.js";
+import { registerErrorHandler } from "./middleware/error-handler.js";
+import { generateRequestId } from "./middleware/request-id.js";
+import { registerHealthRoute } from "./routes/health.js";
+import { registerPlanRoute, type AuditRecord } from "./routes/plan.js";
+import { createOpenAIPlanner, type RescuePlanner } from "./services/openai-planner.js";
+
+export async function buildServer(options: { config?: AppConfig; planner?: RescuePlanner; audit?: (record: AuditRecord) => void; logger?: boolean } = {}): Promise<FastifyInstance> {
+  const config = options.config ?? loadConfig();
+  const allowedOrigins = new Set(config.allowedOrigins);
+  const app = Fastify({
+    logger: options.logger ?? config.nodeEnv !== "test",
+    trustProxy: config.trustProxyHops,
+    genReqId: generateRequestId,
+    bodyLimit: 4_096,
+    requestTimeout: 8_000,
+  });
+
+  app.addHook("onRequest", async (request, reply) => {
+    reply.header("X-Request-Id", request.id);
+    const origin = request.headers.origin;
+    if (origin && !allowedOrigins.has(origin)) return reply.status(403).send({ error: "허용되지 않은 Origin입니다.", code: "ORIGIN_NOT_ALLOWED", requestId: request.id });
+  });
+
+  await app.register(cors, {
+    origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "X-Request-Id"],
+    credentials: false,
+    strictPreflight: true,
+  });
+
+  registerErrorHandler(app);
+  registerHealthRoute(app, config);
+  registerPlanRoute(app, { config, planner: options.planner ?? createOpenAIPlanner(config), audit: options.audit });
+  return app;
+}
+
+async function main() {
+  const config = loadConfig();
+  const app = await buildServer({ config });
+  const shutdown = async () => { await app.close(); process.exit(0); };
+  process.on("SIGTERM", () => void shutdown());
+  process.on("SIGINT", () => void shutdown());
+  await app.listen({ host: config.host, port: config.port });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: { name?: string }) => {
+    console.error(JSON.stringify({ level: "fatal", event: "startup_failed", errorName: error?.name ?? "Error" }));
+    process.exit(1);
+  });
+}

@@ -2,6 +2,7 @@ node_modules/
 .next/
 .venv/
 *.log
+*.tsbuildinfo
 .DS_Store
 .env*
 !.env.example
@@ -9,3 +10,5 @@ playwright-report/
 test-results/
 tmp/imagegen/
 .vercel
+infra/oci/.env.production
+backend/dist/
