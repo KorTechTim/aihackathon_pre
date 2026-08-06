@@ -9,13 +9,13 @@
   "assumptions": [
     "현행 예선 배포 구조를 문서화한 actual-state 모델이며 권장 미래 구성을 추가하지 않습니다.",
     "OCI Region, VCN/Subnet CIDR, Security List와 NSG의 실제 이름, AD/FD는 공개 문서에서 확인되지 않았습니다.",
-    "브라우저는 Vercel의 same-origin /api/plan만 호출하며 OCI VM이나 OpenAI를 직접 호출하지 않습니다."
+    "브라우저는 대사가 필요할 때 Vercel의 same-origin /api/dialogue만 호출하며 OCI VM이나 OpenAI를 직접 호출하지 않습니다."
   ],
   "architecture_notes": [
-    "Vercel Production은 Next.js 애플리케이션과 서버 검증 프록시를 실행하고, OCI 장애 시 동일 schema의 LOCAL fallback을 반환합니다.",
-    "Vercel 서버 Route는 공유 Bearer 인증으로 OCI 공인 엔드포인트의 TCP 8080 /v1/plan을 호출합니다.",
+    "Vercel Production은 Next.js 애플리케이션과 서버 검증 프록시를 실행하고, OCI 장애 시 사전 정의된 LOCAL 대사 fallback을 반환합니다.",
+    "Vercel 서버 Route는 공유 Bearer 인증으로 OCI 공인 엔드포인트의 TCP 8080 /api/dialogue를 호출합니다.",
     "OCI VM은 Ubuntu 22.04, UFW와 iptables, systemd, Docker Compose, Node.js/Fastify API로 구성됩니다.",
-    "Fastify API는 인증, IP 기반 rate limit, 동시 burst 제한, 성공 계획 cache, request ID 상관관계 로그를 적용합니다.",
+    "Fastify API는 인증, schema 검증, IP 기반 rate limit, 동시 burst 제한, request ID 상관관계 로그를 적용합니다.",
     "OCI 백엔드는 OpenAI Responses API를 HTTPS 443으로 호출하며 OpenAI 키는 저장소 밖 서버 환경파일에만 존재합니다.",
     "GitHub main은 Vercel에 자동 배포되며 OCI는 승인된 main 커밋을 수동 fetch/checkout한 뒤 systemd reload로 반영합니다."
   ],
@@ -58,7 +58,7 @@
       "notes": [
         "Ubuntu 22.04 host with UFW and iptables including DOCKER-USER filtering",
         "systemd manages Docker Compose service pixel-panic-api",
-        "Node.js/Fastify exposes /health and authenticated /v1/plan on TCP 8080",
+        "Node.js/Fastify exposes /health and authenticated /api/dialogue on TCP 8080",
         "Server-only secrets are loaded from /etc/pixel-panic/backend.env"
       ]
     }

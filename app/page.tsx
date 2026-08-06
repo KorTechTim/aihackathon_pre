@@ -1,173 +1,128 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GameCanvas, OperationPhase } from "@/components/GameCanvas";
+import { GameCanvas, type OperationPhase } from "@/components/GameCanvas";
 import { PixelButton } from "@/components/PixelButton";
-import { RobotCard } from "@/components/RobotCard";
 import { StageViewport } from "@/components/StageViewport";
+import { DIALOGUE_EVENTS, buildDialogueRequest, dialogueForAction, type DialogueEventDefinition } from "@/lib/dialogue-events";
+import { deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
 import {
-  FALLBACK_PLAN,
-  calculateGameStats,
-  canComplete,
-  deriveWorldSnapshot,
-  isIncidentId,
-  isOperationCallbackAllowed,
-  normalizePriority,
-  normalizeRescuePlan,
-  type FinishReason,
-  type GameStats,
+  ACTIONS,
+  INCIDENTS,
+  INCIDENT_IDS,
+  ROBOT_IDS,
+  WAVE_LABELS,
+  abandonGame,
+  advanceGame,
+  applyDialogueChoice,
+  createInitialGame,
+  formatGameTime,
+  getAvailableActions,
+  getGrade,
+  getIncidentProgress,
+  getResolvedCount,
+  getVisibleIncidents,
+  selectIncident,
+  selectRobot,
+  startAction,
+  type ActionId,
   type IncidentId,
-  type RescuePlan,
+  type RescueGameState,
   type RobotId,
-  type WorldSnapshot,
-} from "@/lib/game-state";
+} from "@/lib/rescue-engine";
 
 type Screen = "loading" | "title" | "play" | "result";
-type ResultKind = "success" | "fail";
-type PlanSource = "openai" | "fallback";
+type DialogueView = {
+  definition: DialogueEventDefinition;
+  text: string;
+  source: "openai" | "fallback";
+  pendingAction: { incidentId: IncidentId; actionId: ActionId };
+};
 
 declare global {
   interface Window {
     __PIXEL_PANIC_DEBUG__?: {
       phase: OperationPhase;
-      completedIncidents: IncidentId[];
-      worldSnapshot: WorldSnapshot;
-      finishReason: FinishReason | null;
+      completedIncidents: LegacyIncidentId[];
+      worldSnapshot: ReturnType<typeof deriveWorldSnapshot>;
+      game: RescueGameState;
     };
   }
 }
 
 const ASSET = "/assets/pixel-panic";
-
-const quickCommands = [
-  { icon: "quick_fire_first", label: "불부터 꺼줘", command: "AQUA는 빵집 불을 끄고, FIX는 다리를 수리하고, BUDDY는 고양이를 구조해줘." },
-  { icon: "quick_rescue_first", label: "구조 우선", command: "BUDDY는 고양이를 먼저 구조하고, AQUA는 화재를 진압해줘." },
-  { icon: "quick_nearest", label: "가까운 곳부터", command: "각 로봇은 가장 가까운 사고부터 해결해줘." },
-  { icon: "quick_high_risk", label: "위험도 우선", command: "위험도가 높은 화재와 발전기부터 처리해줘." },
-];
-
-const incidents = [
-  { id: "fire", name: "빵집 화재", risk: "위험", color: "danger" },
-  { id: "bridge", name: "파손된 다리", risk: "높음", color: "warning" },
-  { id: "cat", name: "옥상 고양이", risk: "보통", color: "buddy" },
-  { id: "generator", name: "발전기 고장", risk: "높음", color: "fix" },
-] as const;
-
-const incidentNames: Record<IncidentId, string> = {
-  fire: "화재",
-  bridge: "다리",
-  cat: "고양이",
-  generator: "발전기",
+const ROBOT_META: Record<RobotId, { name: string; role: string; color: string }> = {
+  aqua: { name: "AQUA", role: "소방 · 수위", color: "aqua" },
+  fix: { name: "FIX", role: "전력 · 수리", color: "fix" },
+  buddy: { name: "BUDDY", role: "대피 · 구조", color: "buddy" },
 };
-
-const robotNames: Record<RobotId, string> = { aqua: "AQUA", fix: "FIX", buddy: "BUDDY" };
 
 const essentialAssets = [
   `${ASSET}/ui/screens/pp_ui_screen_title_final.webp`,
   `${ASSET}/ui/screens/pp_ui_screen_result_success_final.webp`,
   `${ASSET}/ui/screens/pp_ui_screen_result_fail_final.webp`,
   `${ASSET}/world/maps/pp_stage_01_preview.webp`,
-  ...["aqua", "fix", "buddy"].flatMap((robot) => ["ready", "busy", "fail"].map((state) => `${ASSET}/ui/portraits/pp_ui_portrait_${robot}_${state}.png`)),
+  ...ROBOT_IDS.flatMap((robot) => ["ready", "busy"].map((state) => `${ASSET}/ui/portraits/pp_ui_portrait_${robot}_${state}.png`)),
 ];
 
-const executionPhases: OperationPhase[] = ["fire", "bridge", "cat", "generator", "complete"];
-const planUrl = "/api/plan";
 const debugEnabled = process.env.NEXT_PUBLIC_ENABLE_TEST_DEBUG === "1";
-const ANALYSIS_TIMEOUT_MS = 7_500;
+
+function legacyWorldState(game: RescueGameState): { phase: OperationPhase; completed: LegacyIncidentId[] } {
+  const completed: LegacyIncidentId[] = [];
+  if (["resolved", "contained"].includes(game.incidents.bakery_fire.status) && ["resolved", "contained"].includes(game.incidents.house_fire.status)) completed.push("fire");
+  if (["resolved", "contained"].includes(game.incidents.bridge_damage.status)) completed.push("bridge");
+  if (["resolved", "contained"].includes(game.incidents.cat_trapped.status)) completed.push("cat");
+  if (["resolved", "contained"].includes(game.incidents.power_flood.status)) completed.push("generator");
+  const pending = ROBOT_IDS.map((id) => game.robots[id].pendingAction).find(Boolean);
+  if (!pending) return { phase: game.status === "success" ? "complete" : "idle", completed };
+  if (pending.actionId === "build_bridge") return { phase: "bridge", completed };
+  if (pending.actionId === "rescue_cat" || pending.actionId === "rescue_residents" || pending.actionId === "evacuate" || pending.actionId === "carry_parts") return { phase: "cat", completed };
+  if (pending.actionId === "extinguish" || pending.actionId === "firebreak" || pending.actionId === "lower_water") return { phase: "fire", completed };
+  return { phase: "generator", completed };
+}
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("loading");
-  const [resultKind, setResultKind] = useState<ResultKind>("success");
-  const [phase, setPhase] = useState<OperationPhase>("idle");
-  const [command, setCommand] = useState(quickCommands[0].command);
-  const [seconds, setSeconds] = useState(90);
-  const [showHelp, setShowHelp] = useState(false);
-  const [showPause, setShowPause] = useState(false);
+  const [game, setGame] = useState<RescueGameState>(() => createInitialGame());
   const [soundOn, setSoundOn] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [gameError, setGameError] = useState<string | null>(null);
-  const [aiPlan, setAiPlan] = useState<RescuePlan | null>(null);
-  const [planSource, setPlanSource] = useState<PlanSource | null>(null);
-  const [completedIncidents, setCompletedIncidents] = useState<IncidentId[]>([]);
-  const [commandsUsed, setCommandsUsed] = useState(0);
-  const [usedFallback, setUsedFallback] = useState(false);
-  const [finishReason, setFinishReason] = useState<FinishReason | null>(null);
-  const [resultStats, setResultStats] = useState<GameStats | null>(null);
-  const sequenceTimers = useRef<number[]>([]);
-  const analysisRequestId = useRef(0);
-  const analysisAbortRef = useRef<AbortController | null>(null);
-  const operationRunId = useRef(0);
-  const resultCommitted = useRef(false);
-  const operationStepMsRef = useRef(2_600);
-  const currentPhaseRef = useRef<OperationPhase>(phase);
-  const liveStateRef = useRef({ seconds: 90, commandsUsed: 0, completedIncidents: [] as IncidentId[], usedFallback: false });
-
-  const clearAsyncWork = useCallback(() => {
-    operationRunId.current += 1;
-    analysisRequestId.current += 1;
-    analysisAbortRef.current?.abort();
-    analysisAbortRef.current = null;
-    sequenceTimers.current.forEach(window.clearTimeout);
-    sequenceTimers.current = [];
-  }, []);
-
-  const finishGame = useCallback((kind: ResultKind, reason: FinishReason, overrides: Partial<typeof liveStateRef.current> = {}) => {
-    if (resultCommitted.current) return;
-    resultCommitted.current = true;
-    const finalState = { ...liveStateRef.current, ...overrides };
-    liveStateRef.current = finalState;
-    clearAsyncWork();
-    setShowPause(false);
-    setSeconds(finalState.seconds);
-    setCompletedIncidents(finalState.completedIncidents);
-    const stats = calculateGameStats({
-      secondsRemaining: finalState.seconds,
-      commandsUsed: finalState.commandsUsed,
-      completedIncidents: finalState.completedIncidents,
-      usedFallback: finalState.usedFallback,
-      finishReason: reason,
-    });
-    setResultStats(stats);
-    setResultKind(kind);
-    setFinishReason(reason);
-    setScreen("result");
-  }, [clearAsyncWork]);
+  const [toast, setToast] = useState<string | null>(null);
+  const [dialogue, setDialogue] = useState<DialogueView | null>(null);
+  const dialogueAbortRef = useRef<AbortController | null>(null);
+  const lastTickRef = useRef<number | null>(null);
+  const resultTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requested = params.get("screen");
     if (requested === "play") {
+      const initial = createInitialGame();
+      if (debugEnabled && params.get("skipBriefing") === "1") initial.briefingMs = 0;
+      if (debugEnabled && params.get("qaAll") === "1") {
+        initial.wave = 3;
+        initial.briefingMs = 0;
+        initial.elapsedMs = 0;
+        initial.remainingMs = 210_000;
+        INCIDENT_IDS.forEach((id) => { initial.incidents[id].status = "warning"; });
+      }
+      setGame(initial);
       setScreen("play");
-      if (debugEnabled) {
-        const testSeconds = Number(params.get("testSeconds"));
-        if (Number.isInteger(testSeconds) && testSeconds > 0 && testSeconds <= 90) {
-          liveStateRef.current.seconds = testSeconds;
-          setSeconds(testSeconds);
-        }
-        const stepMs = Number(params.get("stepMs"));
-        if (Number.isFinite(stepMs) && stepMs >= 200 && stepMs <= 2_600) operationStepMsRef.current = stepMs;
-      }
-      const requestedCompleted = (params.get("completed") ?? "").split(",").filter(isIncidentId);
-      if (requestedCompleted.length) {
-        const uniqueCompleted = [...new Set(requestedCompleted)];
-        liveStateRef.current.completedIncidents = uniqueCompleted;
-        setCompletedIncidents(uniqueCompleted);
-      }
-      const requestedPhase = params.get("phase") as OperationPhase | null;
-      if (["idle", "analyzing", "preview", ...executionPhases].includes(requestedPhase ?? "" as OperationPhase)) {
-        setPhase(requestedPhase ?? "idle");
-      }
       return;
     }
     if (requested === "result") {
-      const kind = params.get("result") === "fail" ? "fail" : "success";
-      const completed = kind === "success" ? normalizePriority(null) : ["fire", "bridge"] as IncidentId[];
-      const reason: FinishReason = kind === "success" ? "completed" : "timeout";
-      setResultKind(kind);
-      setFinishReason(reason);
-      setResultStats(calculateGameStats({ secondsRemaining: kind === "success" ? 52 : 0, commandsUsed: kind === "success" ? 1 : 4, completedIncidents: completed, usedFallback: false, finishReason: reason }));
+      const initial = createInitialGame();
+      initial.status = params.get("result") === "fail" ? "failure" : "success";
+      initial.finishReason = initial.status === "success" ? "completed" : "timeout";
+      initial.villagePreservation = initial.status === "success" ? 91 : 42;
+      initial.rescuedResidents = initial.status === "success" ? 9 : 3;
+      initial.foundCombos = initial.status === "success" ? ["power_cut_fire", "parts_repair", "clear_firebreak"] : [];
+      if (initial.status === "success") INCIDENT_IDS.forEach((id) => { initial.incidents[id].status = "resolved"; initial.incidents[id].progress = 100; });
+      setGame(initial);
       setScreen("result");
       return;
     }
@@ -187,141 +142,103 @@ export default function Home() {
       if (!cancelled) setLoadProgress(Math.round((settled / essentialAssets.length) * 100));
     }));
     void Promise.all(jobs).then(() => {
-      if (!cancelled) window.setTimeout(() => !cancelled && setScreen("title"), 240);
+      if (!cancelled) window.setTimeout(() => !cancelled && setScreen("title"), 180);
     }).catch((error: Error) => {
       if (!cancelled) setLoadError(`필수 그래픽을 불러오지 못했습니다: ${error.message.split("/").at(-1)}`);
     });
     return () => { cancelled = true; };
   }, [loadAttempt]);
 
-  useEffect(() => { currentPhaseRef.current = phase; }, [phase]);
+  useEffect(() => {
+    if (screen !== "play" || paused || game.status !== "playing") {
+      lastTickRef.current = null;
+      return;
+    }
+    const tickScale = debugEnabled ? Math.max(1, Math.min(4, Number(new URLSearchParams(window.location.search).get("tickScale")) || 1)) : 1;
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      const delta = lastTickRef.current === null ? 250 : now - lastTickRef.current;
+      lastTickRef.current = now;
+      setGame((current) => advanceGame(current, delta, (dialogue ? 0.7 : 1) * tickScale));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [dialogue, game.status, paused, screen]);
 
   useEffect(() => {
-    if (screen !== "play" || showPause || resultCommitted.current) return;
-    const timer = window.setInterval(() => {
-      if (currentPhaseRef.current === "complete") return;
-      const next = Math.max(0, liveStateRef.current.seconds - 1);
-      liveStateRef.current.seconds = next;
-      setSeconds(next);
-      if (next === 0) finishGame("fail", "timeout", { seconds: 0 });
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [finishGame, screen, showPause]);
+    if (screen !== "play" || game.status === "playing") return;
+    resultTimerRef.current = window.setTimeout(() => setScreen("result"), 700);
+    return () => { if (resultTimerRef.current !== null) window.clearTimeout(resultTimerRef.current); };
+  }, [game.status, screen]);
 
-  useEffect(() => () => clearAsyncWork(), [clearAsyncWork]);
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(null), 2_000);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
 
+  const visual = useMemo(() => legacyWorldState(game), [game]);
   useEffect(() => {
     if (!debugEnabled) return;
-    window.__PIXEL_PANIC_DEBUG__ = { phase, completedIncidents: [...completedIncidents], worldSnapshot: deriveWorldSnapshot(completedIncidents), finishReason };
+    window.__PIXEL_PANIC_DEBUG__ = { phase: visual.phase, completedIncidents: visual.completed, worldSnapshot: deriveWorldSnapshot(visual.completed), game };
     return () => { delete window.__PIXEL_PANIC_DEBUG__; };
-  }, [completedIncidents, finishReason, phase]);
+  }, [game, visual]);
 
-  const timerText = useMemo(() => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`, [seconds]);
-  const currentStats = useMemo(() => calculateGameStats({ secondsRemaining: seconds, commandsUsed, completedIncidents, usedFallback }), [commandsUsed, completedIncidents, seconds, usedFallback]);
-  const resolvedCount = currentStats.completedIncidents.length;
-  const operationRunning = executionPhases.includes(phase);
-  const commandLocked = operationRunning || phase === "analyzing";
-  const activePlan = aiPlan ?? FALLBACK_PLAN;
+  useEffect(() => () => {
+    dialogueAbortRef.current?.abort();
+    if (resultTimerRef.current !== null) window.clearTimeout(resultTimerRef.current);
+  }, []);
 
-  const startGame = () => {
-    clearAsyncWork();
-    resultCommitted.current = false;
-    const params = new URLSearchParams(window.location.search);
-    const requestedSeconds = debugEnabled ? Number(params.get("testSeconds")) : 90;
-    const initialSeconds = Number.isInteger(requestedSeconds) && requestedSeconds > 0 && requestedSeconds <= 90 ? requestedSeconds : 90;
-    const requestedStepMs = debugEnabled ? Number(params.get("stepMs")) : 2_600;
-    operationStepMsRef.current = Number.isFinite(requestedStepMs) && requestedStepMs >= 200 && requestedStepMs <= 2_600 ? requestedStepMs : 2_600;
-    liveStateRef.current = { seconds: initialSeconds, commandsUsed: 0, completedIncidents: [], usedFallback: false };
-    setSeconds(initialSeconds);
-    setCommandsUsed(0);
-    setUsedFallback(false);
-    setFinishReason(null);
-    setResultStats(null);
-    setPhase("idle");
-    setAiPlan(null);
-    setPlanSource(null);
-    setCompletedIncidents([]);
+  const startGame = useCallback(() => {
+    dialogueAbortRef.current?.abort();
+    setDialogue(null);
+    setPaused(false);
     setGameError(null);
+    setToast(null);
+    setGame(createInitialGame());
     setScreen("play");
-  };
+  }, []);
 
-  const analyze = async () => {
-    if (!command.trim() || phase !== "idle") return;
-    const requestId = ++analysisRequestId.current;
-    const startedAt = Date.now();
+  const openDialogue = useCallback((definition: DialogueEventDefinition, incidentId: IncidentId, actionId: ActionId) => {
+    dialogueAbortRef.current?.abort();
     const controller = new AbortController();
-    analysisAbortRef.current?.abort();
-    analysisAbortRef.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
-    const nextCommandsUsed = liveStateRef.current.commandsUsed + 1;
-    liveStateRef.current.commandsUsed = nextCommandsUsed;
-    setCommandsUsed(nextCommandsUsed);
-    setPhase("analyzing");
-    setAiPlan(null);
-    setPlanSource(null);
-    setCompletedIncidents([]);
+    dialogueAbortRef.current = controller;
+    setDialogue({ definition, text: definition.fallbackDialogue, source: "fallback", pendingAction: { incidentId, actionId } });
+    const timeout = window.setTimeout(() => controller.abort(), 4_800);
+    void fetch("/api/dialogue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildDialogueRequest(definition, game)),
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) return;
+      const data = await response.json() as { dialogue?: unknown; source?: unknown };
+      if (typeof data.dialogue !== "string" || data.dialogue.length > 160 || data.source !== "openai" && data.source !== "fallback") return;
+      setDialogue((current) => current?.definition.id === definition.id ? { ...current, text: data.dialogue as string, source: data.source as "openai" | "fallback" } : current);
+    }).catch(() => undefined).finally(() => window.clearTimeout(timeout));
+  }, [game]);
 
-    try {
-      const response = await fetch(planUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: command.trim() }),
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`Plan API HTTP ${response.status}`);
-      const data = await response.json() as { plan?: RescuePlan; source?: PlanSource };
-      const normalizedPlan = normalizeRescuePlan(data.plan);
-      if (!normalizedPlan || data.source !== "openai" && data.source !== "fallback") throw new Error("Invalid plan response");
-      if (analysisRequestId.current !== requestId) return;
-      const fallback = data.source === "fallback";
-      liveStateRef.current.usedFallback = fallback;
-      setUsedFallback(fallback);
-      setAiPlan(normalizedPlan);
-      setPlanSource(data.source);
-    } catch {
-      if (analysisRequestId.current !== requestId) return;
-      liveStateRef.current.usedFallback = true;
-      setUsedFallback(true);
-      setAiPlan(FALLBACK_PLAN);
-      setPlanSource("fallback");
-    } finally {
-      window.clearTimeout(timeout);
-      if (analysisAbortRef.current === controller) analysisAbortRef.current = null;
-      const remainingDelay = Math.max(0, 900 - (Date.now() - startedAt));
-      if (remainingDelay) await new Promise((resolve) => window.setTimeout(resolve, remainingDelay));
-      if (analysisRequestId.current === requestId && !resultCommitted.current) setPhase("preview");
-    }
-  };
+  const requestAction = useCallback((actionId: ActionId) => {
+    const incidentId = game.selectedIncidentId;
+    if (!incidentId) return setToast("먼저 지도에서 사고를 선택하세요.");
+    const action = ACTIONS[actionId];
+    const event = dialogueForAction(game, incidentId, actionId, action.robotId);
+    if (event) return openDialogue(event, incidentId, actionId);
+    const result = startAction(game, incidentId, actionId);
+    if (!result.ok) return setToast(result.error ?? "출동할 수 없습니다.");
+    setGame(result.state);
+  }, [game, openDialogue]);
 
-  const execute = () => {
-    clearAsyncWork();
-    const runId = operationRunId.current;
-    const priority = normalizePriority(activePlan.priority);
-    const stepMs = operationStepMsRef.current;
-    liveStateRef.current.completedIncidents = [];
-    setCompletedIncidents([]);
-    setPhase(priority[0]);
-    priority.slice(1).forEach((nextIncident, index) => {
-      const completedCount = index + 1;
-      sequenceTimers.current.push(window.setTimeout(() => {
-        if (!isOperationCallbackAllowed(runId, operationRunId.current, resultCommitted.current)) return;
-        const completed = priority.slice(0, completedCount);
-        liveStateRef.current.completedIncidents = completed;
-        setCompletedIncidents(completed);
-        setPhase(nextIncident);
-      }, completedCount * stepMs));
+  const chooseDialogue = useCallback((choiceId: string) => {
+    if (!dialogue) return;
+    dialogueAbortRef.current?.abort();
+    setGame((current) => {
+      const decided = applyDialogueChoice(current, dialogue.definition.id, choiceId);
+      const result = startAction(decided, dialogue.pendingAction.incidentId, dialogue.pendingAction.actionId);
+      if (!result.ok) setToast(result.error ?? "출동할 수 없습니다.");
+      return result.state;
     });
-    sequenceTimers.current.push(window.setTimeout(() => {
-      if (!isOperationCallbackAllowed(runId, operationRunId.current, resultCommitted.current) || !canComplete(priority)) return;
-      liveStateRef.current.completedIncidents = priority;
-      setCompletedIncidents(priority);
-      setPhase("complete");
-    }, 4 * stepMs));
-    sequenceTimers.current.push(window.setTimeout(() => {
-      if (!isOperationCallbackAllowed(runId, operationRunId.current, resultCommitted.current) || !canComplete(priority)) return;
-      finishGame("success", "completed", { completedIncidents: priority });
-    }, 4 * stepMs + Math.max(180, Math.round(stepMs * 0.8))));
-  };
+    setDialogue(null);
+  }, [dialogue]);
 
   return (
     <main className="app-shell">
@@ -330,92 +247,41 @@ export default function Home() {
         <strong>기기를 가로로 돌려주세요</strong>
         <span>PIXEL PANIC은 가로 화면에 최적화되어 있어요.</span>
       </div>
-
       <StageViewport>
         {screen === "loading" && <LoadingScreen progress={loadProgress} error={loadError} onRetry={() => setLoadAttempt((value) => value + 1)} />}
-        {screen === "title" && (
-          <TitleScreen soundOn={soundOn} onSound={() => setSoundOn((value) => !value)} onStart={startGame} onHelp={() => setShowHelp(true)} />
-        )}
+        {screen === "title" && <TitleScreen soundOn={soundOn} onSound={() => setSoundOn((value) => !value)} onStart={startGame} onHelp={() => setShowHelp(true)} />}
         {screen === "play" && (
-          <section className="game-screen" aria-label="PIXEL PANIC 게임 화면" data-phase={phase} data-completed={completedIncidents.join(",")}>
-            <GameCanvas phase={phase} completedIncidents={completedIncidents} onError={(message) => { setGameError(message); finishGame("fail", "runtime_error"); }} />
-
-            <header className="top-hud pixel-panel">
-              <div className="hud-brand"><img src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" /><span><strong>PIXEL PANIC</strong><small>AI RESCUE HQ</small></span></div>
-              <HudStat icon="timer" label="남은 시간" value={timerText} emphasized />
-              <HudStat icon="village_hp" label="마을 보존율" value={`${currentStats.villagePreservation}%`} />
-              <HudStat icon="incident_count" label="해결한 사건" value={`${resolvedCount}/4`} />
-              <button className="icon-control" aria-label="일시정지" onClick={() => setShowPause(true)}><img src={`${ASSET}/ui/icons/pp_ui_icon_pause.png`} alt="" /></button>
-            </header>
-
-            <aside className="robot-panel pixel-panel" aria-label="구조 로봇 상태">
-              <div className="panel-heading"><span>구조 로봇</span><small>ONLINE · 3</small></div>
-              <RobotCard robot="aqua" name="AQUA" role="소방·냉각" phase={phase} completedIncidents={completedIncidents} />
-              <RobotCard robot="fix" name="FIX" role="수리·건설" phase={phase} completedIncidents={completedIncidents} />
-              <RobotCard robot="buddy" name="BUDDY" role="구조·운반" phase={phase} completedIncidents={completedIncidents} />
-            </aside>
-
-            <aside className="incident-panel pixel-alert" aria-label="활성 사건">
-              <div className="panel-heading"><span>긴급 상황</span><small>{resolvedCount}/4 해결</small></div>
-              <div className="incident-list">
-                {incidents.map((incident) => {
-                  const resolved = completedIncidents.includes(incident.id) || phase === "complete";
-                  const active = phase === incident.id;
-                  return (
-                    <div className={`incident-row ${active ? "active" : ""} ${resolved ? "is-resolved" : ""}`} key={incident.id}>
-                      <img src={`${ASSET}/ui/icons/pp_ui_icon_incident_${incident.id}.png`} alt="" />
-                      <div><strong>{incident.name}</strong><span className={`risk ${incident.color}`}>{resolved ? "해결 완료" : active ? "처리 중" : incident.risk}</span></div>
-                      <span className={`incident-check ${resolved ? "resolved" : ""}`}>{resolved ? "✓" : active ? "…" : "!"}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              {(phase === "preview" || operationRunning) && (
-                <div className="plan-preview" aria-label="작전 미리보기">
-                  <div className="plan-title"><b>{phase === "preview" ? "AI 작전 미리보기" : "AI 작전 실행 중"}</b><em className={planSource === "openai" ? "live" : "fallback"}>{planSource === "openai" ? "GPT LIVE" : "LOCAL"}</em></div>
-                  <p>{activePlan.summary}</p>
-                  {activePlan.assignments.map((assignment) => (
-                    <span className={`${assignment.robot}-text`} title={assignment.reason} key={assignment.robot}>
-                      {robotNames[assignment.robot]} → {assignment.incidents.map((id) => incidentNames[id]).join("·")}
-                    </span>
-                  ))}
-                  <small>순서: {activePlan.priority.map((id) => incidentNames[id]).join(" → ")}</small>
-                </div>
-              )}
-            </aside>
-
-            <section className={`command-dock pixel-command ${phase === "analyzing" ? "is-analyzing" : ""}`}>
-              <div className="quick-command-list" aria-label="추천 명령">
-                {quickCommands.map((item) => (
-                  <button key={item.label} disabled={commandLocked} onClick={() => { setCommand(item.command); setPhase("idle"); setAiPlan(null); setPlanSource(null); }}><img src={`${ASSET}/ui/icons/pp_ui_icon_${item.icon}.png`} alt="" />{item.label}</button>
-                ))}
-              </div>
-              <div className="command-main">
-                <label htmlFor="rescue-command"><img src={`${ASSET}/ui/icons/pp_ui_icon_ai.png`} alt="" />AI 작전 명령</label>
-                <input id="rescue-command" value={command} maxLength={500} disabled={commandLocked} onChange={(event) => { setCommand(event.target.value); setPhase("idle"); setAiPlan(null); setPlanSource(null); }} onKeyDown={(event) => { if (event.key === "Enter") void analyze(); }} aria-describedby="command-status" />
-                <span id="command-status" className="command-status" aria-live="polite"><CommandStatus phase={phase} /></span>
-              </div>
-              <PixelButton onClick={phase === "preview" ? execute : () => void analyze()} disabled={phase === "analyzing" || operationRunning}>
-                {phase === "preview" ? "작전 실행" : phase === "analyzing" ? "분석 중…" : operationRunning ? `${resolvedCount}/4 구조 중` : "명령 분석"}
-              </PixelButton>
-              {phase === "analyzing" && <div className="ai-scanline" aria-hidden="true" />}
-            </section>
-
-            {gameError && <div className="runtime-error" role="alert"><strong>그래픽 로딩 오류</strong><span>{gameError}</span><button onClick={() => window.location.reload()}>다시 시도</button></div>}
-            {showPause && (
-              <Modal title="작전 일시정지" onClose={() => setShowPause(false)}>
-                <p>타이머가 멈췄습니다. 준비되면 작전을 계속하세요.</p>
-                <div className="modal-actions"><PixelButton onClick={() => setShowPause(false)}>계속하기</PixelButton><PixelButton variant="danger" onClick={() => finishGame("fail", "abandoned")}>작전 포기</PixelButton></div>
-              </Modal>
-            )}
-          </section>
+          <GameScreen
+            game={game}
+            visual={visual}
+            paused={paused}
+            soundOn={soundOn}
+            gameError={gameError}
+            toast={toast}
+            onIncident={(id) => setGame((current) => selectIncident(current, id))}
+            onRobot={(id) => setGame((current) => selectRobot(current, id))}
+            onAction={requestAction}
+            onPause={() => setPaused(true)}
+            onSound={() => setSoundOn((value) => !value)}
+            onHelp={() => setShowHelp(true)}
+            onGameError={setGameError}
+          />
         )}
-        {screen === "result" && <ResultScreen kind={resultKind} stats={resultStats ?? currentStats} finishReason={finishReason} onRetry={startGame} onTitle={() => { clearAsyncWork(); setScreen("title"); }} />}
+        {screen === "result" && <ResultScreen game={game} onRetry={startGame} onTitle={() => setScreen("title")} />}
 
+        {game.briefingMs > 0 && screen === "play" && <WaveBriefing wave={game.wave} />}
+        {game.comboBanner && screen === "play" && <div className="combo-banner"><small>PERFECT COMBO</small><strong>{game.comboBanner}</strong><span>+150</span></div>}
+        {dialogue && screen === "play" && <DialogueModal view={dialogue} onChoose={chooseDialogue} />}
+        {paused && screen === "play" && (
+          <Modal title="작전 일시정지" onClose={() => setPaused(false)}>
+            <p>모든 사고와 로봇 타이머가 멈췄습니다.</p>
+            <div className="modal-actions"><PixelButton onClick={() => setPaused(false)}>계속하기</PixelButton><PixelButton variant="danger" onClick={() => { setGame((current) => abandonGame(current)); setPaused(false); }}>작전 포기</PixelButton></div>
+          </Modal>
+        )}
         {showHelp && (
-          <Modal title="플레이 방법" onClose={() => setShowHelp(false)}>
-            <ol className="how-to-list"><li><b>1</b><span>추천 문장을 고르거나 자연어로 명령하세요.</span></li><li><b>2</b><span>AI가 나눈 로봇별 작전을 확인하세요.</span></li><li><b>3</b><span>90초 안에 네 사건을 모두 해결하세요!</span></li></ol>
-            <PixelButton onClick={() => { setShowHelp(false); startGame(); }}>바로 시작</PixelButton>
+          <Modal title="클릭 구조 매뉴얼" onClose={() => setShowHelp(false)}>
+            <ol className="how-to-list"><li><b>1</b><span>지도나 왼쪽 목록에서 사고를 클릭합니다.</span></li><li><b>2</b><span>현장에 맞는 구조 로봇을 클릭합니다.</span></li><li><b>3</b><span>행동 순서를 조합해 콤보와 확산 차단을 노립니다.</span></li></ol>
+            <PixelButton onClick={() => { setShowHelp(false); if (screen !== "play") startGame(); }}>확인</PixelButton>
           </Modal>
         )}
       </StageViewport>
@@ -423,58 +289,159 @@ export default function Home() {
   );
 }
 
-function LoadingScreen({ progress, error, onRetry }: { progress: number; error: string | null; onRetry: () => void }) {
+function GameScreen({ game, visual, paused, soundOn, gameError, toast, onIncident, onRobot, onAction, onPause, onSound, onHelp, onGameError }: {
+  game: RescueGameState;
+  visual: { phase: OperationPhase; completed: LegacyIncidentId[] };
+  paused: boolean;
+  soundOn: boolean;
+  gameError: string | null;
+  toast: string | null;
+  onIncident: (id: IncidentId) => void;
+  onRobot: (id: RobotId) => void;
+  onAction: (id: ActionId) => void;
+  onPause: () => void;
+  onSound: () => void;
+  onHelp: () => void;
+  onGameError: (message: string) => void;
+}) {
+  const resolvedCount = getResolvedCount(game);
+  const visible = getVisibleIncidents(game);
+  const selected = game.selectedIncidentId ? INCIDENTS[game.selectedIncidentId] : null;
+  const selectedRuntime = selected ? game.incidents[selected.id] : null;
+  const selectedProgress = selected ? getIncidentProgress(game, selected.id) : 0;
+  const selectedRobot = game.selectedRobotId;
+  const actions = selected && selectedRobot ? getAvailableActions(game, selected.id, selectedRobot) : [];
+  const unresolvedVisible = visible.filter((incident) => !["resolved", "contained"].includes(game.incidents[incident.id].status));
+  const listIncidents = [...unresolvedVisible, ...visible.filter((incident) => ["resolved", "contained"].includes(game.incidents[incident.id].status))].slice(0, 6);
+
   return (
-    <section className="loading-screen">
-      <img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_title_final.webp`} alt="" />
-      <div className="loading-shade" />
-      <div className="loading-card pixel-panel">
-        <img className="loading-mark" src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" />
-        <span className="eyebrow">RESCUE NETWORK</span>
-        <strong>{error ? "연결을 확인해주세요" : "구조 본부 연결 중"}</strong>
-        {error ? <><p>{error}</p><PixelButton onClick={onRetry}>다시 시도</PixelButton></> : <><div className="loading-track"><i style={{ width: `${progress}%` }} /></div><small>{progress}% · 필수 그래픽 점검 중</small></>}
+    <section className="game-screen" aria-label="PIXEL PANIC 클릭 구조 작전" data-wave={game.wave} data-status={game.status} data-resolved={resolvedCount}>
+      <GameCanvas phase={visual.phase} completedIncidents={visual.completed} onError={onGameError} />
+      <header className="top-hud pixel-panel">
+        <div className="hud-brand"><img src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" /><span><strong>PIXEL PANIC</strong><small>CLICK RESCUE OPS</small></span></div>
+        <HudStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} emphasized />
+        <HudStat icon="village_hp" label="마을 보존" value={`${game.villagePreservation}%`} />
+        <HudStat icon="incident_count" label="해결 사고" value={`${resolvedCount}/${INCIDENT_IDS.length}`} />
+        <div className="wave-chip"><small>WAVE {game.wave}/3</small><strong>{WAVE_LABELS[game.wave - 1]}</strong></div>
+        <button className="icon-control" onClick={onSound} aria-label={soundOn ? "소리 끄기" : "소리 켜기"}><img src={`${ASSET}/ui/icons/pp_ui_icon_sound_${soundOn ? "on" : "off"}.png`} alt="" /></button>
+        <button className="icon-control" onClick={onHelp} aria-label="도움말">?</button>
+        <button className="icon-control" onClick={onPause} aria-label="일시정지"><img src={`${ASSET}/ui/icons/pp_ui_icon_pause.png`} alt="" /></button>
+      </header>
+
+      <aside className="incident-panel pixel-alert" aria-label="활성 사고 목록">
+        <div className="panel-heading"><span>긴급 상황</span><small>{unresolvedVisible.length} ACTIVE</small></div>
+        <div className="incident-list">
+          {listIncidents.map((incident) => {
+            const runtime = game.incidents[incident.id];
+            const resolved = ["resolved", "contained"].includes(runtime.status);
+            const active = game.selectedIncidentId === incident.id;
+            return (
+              <button className={`incident-row ${active ? "active" : ""} ${resolved ? "is-resolved" : ""}`} key={incident.id} onClick={() => onIncident(incident.id)}>
+                <img src={`${ASSET}/ui/icons/pp_ui_icon_incident_${incident.icon}.png`} alt="" />
+                <span><strong>{incident.label}</strong><small>{resolved ? "해결 완료" : runtime.status === "warning" ? "확산 경고" : `확산 ${Math.ceil(runtime.remainingSpreadMs / 1_000)}초`}</small><i><b style={{ width: `${Math.min(100, runtime.severity / incident.maxSeverity * 100)}%` }} /></i></span>
+                <em>{resolved ? "✓" : runtime.severity}</em>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+
+      <div className="map-hotspots" aria-label="사고 지도">
+        {visible.filter((incident) => !["resolved", "contained"].includes(game.incidents[incident.id].status)).map((incident) => {
+          const runtime = game.incidents[incident.id];
+          return (
+            <button
+              key={incident.id}
+              className={`incident-pin ${runtime.status} ${game.selectedIncidentId === incident.id ? "selected" : ""}`}
+              style={{ left: incident.mapPosition[0], top: incident.mapPosition[1] }}
+              onClick={() => onIncident(incident.id)}
+              aria-label={`${incident.label}, 위험도 ${runtime.severity}`}
+            >
+              <img src={`${ASSET}/ui/icons/pp_ui_icon_incident_${incident.icon}.png`} alt="" /><span>{incident.shortLabel}</span><i>{Math.ceil(runtime.remainingSpreadMs / 1_000)}</i>
+            </button>
+          );
+        })}
       </div>
+
+      <aside className="robot-panel pixel-panel" aria-label="구조 로봇 선택">
+        <div className="panel-heading"><span>2 · 로봇 선택</span><small>3 ONLINE</small></div>
+        {ROBOT_IDS.map((robotId) => {
+          const robot = game.robots[robotId];
+          const meta = ROBOT_META[robotId];
+          const assigned = Boolean(robot.pendingAction);
+          const progress = assigned && robot.pendingAction ? 100 - robot.pendingAction.remainingMs / robot.pendingAction.totalMs * 100 : 0;
+          const canHandle = selected ? INCIDENTS[selected.id].allowedActions.some((id) => ACTIONS[id].robotId === robotId && !selectedRuntime?.completedActions.includes(id)) : false;
+          return (
+            <button key={robotId} className={`robot-card ${meta.color} ${game.selectedRobotId === robotId ? "selected" : ""}`} disabled={assigned || !canHandle} onClick={() => onRobot(robotId)}>
+              <img className="robot-portrait" src={`${ASSET}/ui/portraits/pp_ui_portrait_${robotId}_${assigned ? "busy" : "ready"}.png`} alt={`${meta.name} 초상화`} />
+              <span><strong>{meta.name}</strong><small>{assigned ? `${ACTIONS[robot.currentAction!].label} ${Math.ceil((robot.remainingActionMs ?? 0) / 1_000)}초` : canHandle ? meta.role : "다른 로봇 필요"}</small>{assigned && <i><b style={{ width: `${progress}%` }} /></i>}</span>
+              <em>{assigned ? "WORK" : canHandle ? "READY" : "—"}</em>
+            </button>
+          );
+        })}
+      </aside>
+
+      <aside className="action-panel pixel-command" aria-label="행동 선택">
+        <div className="panel-heading"><span>3 · 행동 선택</span><small>{selectedRobot ? ROBOT_META[selectedRobot].name : "ROBOT?"}</small></div>
+        {selected && selectedRuntime ? (
+          <>
+            <div className="incident-detail"><span className={`severity severity-${selectedRuntime.severity}`}>위험 {selectedRuntime.severity}</span><strong>{selected.label}</strong><small>해결 진행 {selectedProgress}% · 연결 {selected.spreadsTo.length ? selected.spreadsTo.map((id) => INCIDENTS[id].shortLabel).join(" → ") : "없음"}</small><small>{selectedRuntime.status === "warning" ? "확산 전 선행 조치 가능" : `다음 확산까지 ${Math.ceil(selectedRuntime.remainingSpreadMs / 1_000)}초`}</small></div>
+            {!selectedRobot && <p className="action-guide">위에서 출동할 로봇을 클릭하세요.</p>}
+            <div className="action-buttons">
+              {actions.map((action) => <button key={action.id} disabled={game.robots[action.robotId].status !== "idle"} onClick={() => onAction(action.id)}><span>{action.label}</span><small>{Math.ceil(action.durationMs / 1_000)}초 · {action.description}</small></button>)}
+              {selectedRobot && actions.length === 0 && <p className="action-guide">이 로봇의 가능한 행동이 없습니다.</p>}
+            </div>
+          </>
+        ) : <p className="action-guide">지도에서 사고를 선택하세요.</p>}
+      </aside>
+
+      <footer className="operation-dock pixel-command">
+        <section className="mission-log"><strong>작전 로그</strong>{game.logs.slice(-3).map((log) => <span className={log.tone} key={log.id}>› {log.message}</span>)}</section>
+        <section className="mission-flow"><span className={selected ? "done" : "active"}><b>1</b>{selected?.shortLabel ?? "사고 선택"}</span><i>→</i><span className={selectedRobot ? "done" : selected ? "active" : ""}><b>2</b>{selectedRobot ? ROBOT_META[selectedRobot].name : "로봇 선택"}</span><i>→</i><span className={selectedRobot ? "active" : ""}><b>3</b>행동 실행</span></section>
+        <section className="score-box"><small>SCORE</small><strong>{Math.max(0, game.score).toLocaleString()}</strong><span>COMBO {game.foundCombos.length}/5 · MAX ×{game.maxCombo}</span></section>
+      </footer>
+
+      {toast && <div className="toast" role="status">{toast}</div>}
+      {gameError && <div className="graphics-warning" role="status">그래픽 일부를 불러오지 못했지만 게임은 계속됩니다.</div>}
+      {paused && <div className="pause-dim" />}
     </section>
   );
+}
+
+function DialogueModal({ view, onChoose }: { view: DialogueView; onChoose: (choiceId: string) => void }) {
+  const robot = view.definition.speaker === "주민" ? "buddy" : view.definition.speaker.toLowerCase();
+  return (
+    <div className="modal-backdrop dialogue-backdrop" role="presentation">
+      <section className="dialogue-card pixel-panel" role="dialog" aria-modal="true" aria-labelledby="dialogue-title">
+        <img src={`${ASSET}/ui/portraits/pp_ui_portrait_${robot}_ready.png`} alt="" />
+        <div className="dialogue-copy"><span><b>{view.definition.speaker}</b><em className={view.source}>{view.source === "openai" ? "GPT LIVE" : "LOCAL SAFE"}</em></span><h2 id="dialogue-title">{view.definition.title}</h2><p>{view.text}</p></div>
+        <div className="dialogue-choices">{view.definition.choices.map((choice) => <button key={choice.id} onClick={() => onChoose(choice.id)}>{choice.label}</button>)}</div>
+      </section>
+    </div>
+  );
+}
+
+function WaveBriefing({ wave }: { wave: 1 | 2 | 3 }) {
+  return <div className="wave-briefing" role="status"><small>INCOMING</small><strong>WAVE {wave}</strong><span>{WAVE_LABELS[wave - 1]}</span><p>{wave === 1 ? "전력 차단 → 대피 → 가스 차단 → 진압" : wave === 2 ? "부품 운반 → 전력 복구 → 배수 → 다리 → 구조" : "화재와 구조 신호가 동시에 발생합니다."}</p></div>;
+}
+
+function LoadingScreen({ progress, error, onRetry }: { progress: number; error: string | null; onRetry: () => void }) {
+  return <section className="loading-screen"><img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_title_final.webp`} alt="" /><div className="loading-shade" /><div className="loading-card pixel-panel"><img className="loading-mark" src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" /><span className="eyebrow">RESCUE NETWORK</span><strong>{error ? "연결을 확인해주세요" : "구조 본부 연결 중"}</strong>{error ? <><p>{error}</p><PixelButton onClick={onRetry}>다시 시도</PixelButton></> : <><div className="loading-track"><i style={{ width: `${progress}%` }} /></div><small>{progress}% · 필수 그래픽 점검 중</small></>}</div></section>;
 }
 
 function TitleScreen({ soundOn, onSound, onStart, onHelp }: { soundOn: boolean; onSound: () => void; onStart: () => void; onHelp: () => void }) {
   return (
-    <section className="title-screen">
-      <img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_title_final.webp`} alt="AQUA, FIX, BUDDY가 출동을 준비하는 구조 마을" />
-      <div className="title-vignette" />
-      <button className="sound-button icon-control" onClick={onSound} aria-label={soundOn ? "소리 끄기" : "소리 켜기"}><img src={`${ASSET}/ui/icons/pp_ui_icon_sound_${soundOn ? "on" : "off"}.png`} alt="" /></button>
-      <div className="title-content">
-        <span className="title-kicker"><i /> NATURAL LANGUAGE RESCUE OPS <i /></span>
-        <div className="title-lockup"><span>NHN AI HACKATHON</span><h1>PIXEL <em>PANIC</em></h1><b>AI 구조대</b></div>
-        <p>당신의 한마디가 세 로봇의 작전이 됩니다.<br /><strong>90초 안에 마을의 네 사건을 해결하세요.</strong></p>
-        <div className="title-actions"><PixelButton className="hero-button" onClick={onStart}>구조 작전 시작</PixelButton><PixelButton variant="secondary" onClick={onHelp}>플레이 방법</PixelButton></div>
-      </div>
-      <div className="role-pills" aria-label="구조 로봇 역할"><span className="aqua"><b>AQUA</b> FIRE & WATER</span><span className="fix"><b>FIX</b> REPAIR & POWER</span><span className="buddy"><b>BUDDY</b> RESCUE & CARE</span></div>
-    </section>
+    <section className="title-screen"><img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_title_final.webp`} alt="AQUA, FIX, BUDDY가 출동을 준비하는 구조 마을" /><div className="title-vignette" /><button className="sound-button icon-control" onClick={onSound} aria-label={soundOn ? "소리 끄기" : "소리 켜기"}><img src={`${ASSET}/ui/icons/pp_ui_icon_sound_${soundOn ? "on" : "off"}.png`} alt="" /></button><div className="title-content"><span className="title-kicker"><i /> CLICK · PLAN · COMBO <i /></span><div className="title-lockup"><span>NHN AI HACKATHON</span><h1>PIXEL <em>PANIC</em></h1><b>AI 구조대</b></div><p>번지는 사고를 분석하고 세 로봇을 올바른 순서로 배치하세요.<br /><strong>키보드 없이 클릭만으로 마을을 구조합니다.</strong></p><div className="title-actions"><PixelButton className="hero-button" onClick={onStart}>구조 작전 시작</PixelButton><PixelButton variant="secondary" onClick={onHelp}>플레이 방법</PixelButton></div></div><div className="role-pills" aria-label="구조 로봇 역할"><span className="aqua"><b>AQUA</b> FIRE & WATER</span><span className="fix"><b>FIX</b> REPAIR & POWER</span><span className="buddy"><b>BUDDY</b> RESCUE & CARE</span></div></section>
   );
 }
 
-function ResultScreen({ kind, stats, finishReason, onRetry, onTitle }: { kind: ResultKind; stats: GameStats; finishReason: FinishReason | null; onRetry: () => void; onTitle: () => void }) {
-  const success = kind === "success";
-  const failTitle = finishReason === "timeout" ? "구조 시간이 종료됐어요" : finishReason === "abandoned" ? "작전을 종료했습니다" : "안전 모드로 전환했어요";
-  const failCopy = finishReason === "timeout" ? "해결한 사건은 보존했습니다. 우선순위를 바꿔 다시 도전해보세요." : finishReason === "abandoned" ? "현재까지의 구조 기록을 저장했습니다." : "그래픽 실행 오류로 작전을 안전하게 종료했습니다.";
+function ResultScreen({ game, onRetry, onTitle }: { game: RescueGameState; onRetry: () => void; onTitle: () => void }) {
+  const success = game.status === "success";
+  const grade = getGrade(game);
+  const reason = game.finishReason === "timeout" ? "구조 시간이 종료됐어요" : game.finishReason === "village_lost" ? "마을 안전도가 0이 됐어요" : game.finishReason === "abandoned" ? "작전을 종료했습니다" : "구조 작전 완료!";
   return (
-    <section className={`result-screen ${kind}`}>
-      <img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_result_${kind}_final.webp`} alt={success ? "마을 주민과 구조대가 함께 축하하는 모습" : "비 내리는 마을에서 다음 출동을 준비하는 구조대"} />
-      <div className="result-vignette" />
-      <div className={`result-card ${success ? "pixel-success" : "pixel-alert"}`}>
-        <div className="result-copy"><span className="result-kicker">{success ? "MISSION COMPLETE" : "MISSION REPORT"}</span><img className="grade" src={`${ASSET}/ui/pp_ui_grade_${stats.grade.toLowerCase()}.png`} alt={`${stats.grade} 등급`} /><div><h1>{success ? stats.grade === "S" ? "완벽한 구조 작전!" : "구조 작전 성공!" : failTitle}</h1><p>{success ? "세 로봇의 협동으로 모든 사건을 해결했습니다." : failCopy}</p></div></div>
-        <div className="result-stats"><ResultStat icon="rescued" label="구조" value={`${stats.rescuedCount}명`} /><ResultStat icon="incident_count" label="사건 해결" value={`${stats.completedIncidents.length}/4`} /><ResultStat icon="village_hp" label="마을 보존" value={`${stats.villagePreservation}%`} /><ResultStat icon="command_count" label="사용 명령" value={`${stats.commandsUsed}회`} /></div>
-        <div className="result-actions"><PixelButton onClick={onRetry}>다시 출동</PixelButton><PixelButton variant="secondary" onClick={onTitle}>본부로</PixelButton></div>
-      </div>
-    </section>
+    <section className={`result-screen ${success ? "success" : "fail"}`}><img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_result_${success ? "success" : "fail"}_final.webp`} alt="구조 작전 결과" /><div className="result-vignette" /><div className={`result-card ${success ? "pixel-success" : "pixel-alert"}`}><div className="result-copy"><span className="result-kicker">{success ? "MISSION COMPLETE" : "MISSION REPORT"}</span><img className="grade" src={`${ASSET}/ui/pp_ui_grade_${grade.toLowerCase()}.png`} alt={`${grade} 등급`} /><div><h1>{reason}</h1><p>{success ? "결정론 엔진이 모든 구조 기록을 집계했습니다." : "확산 순서와 로봇 조합을 바꿔 다시 도전해보세요."}</p></div></div><div className="result-stats"><ResultStat icon="rescued" label="구조 주민" value={`${game.rescuedResidents}명`} /><ResultStat icon="incident_count" label="해결 사고" value={`${getResolvedCount(game)}/${INCIDENT_IDS.length}`} /><ResultStat icon="village_hp" label="마을 보존" value={`${game.villagePreservation}%`} /><ResultStat icon="command_count" label="발견 콤보" value={`${game.foundCombos.length}/5`} /><ResultStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} /><ResultStat icon="done" label="최대 콤보" value={`×${game.maxCombo}`} /></div><div className="result-score"><small>FINAL SCORE</small><strong>{Math.max(0, game.score).toLocaleString()}</strong></div><div className="result-actions"><PixelButton onClick={onRetry}>다시 출동</PixelButton><PixelButton variant="secondary" onClick={onTitle}>본부로</PixelButton></div></div></section>
   );
-}
-
-function CommandStatus({ phase }: { phase: OperationPhase }) {
-  const messages: Record<OperationPhase, string> = { idle: "Enter 키로 AI에게 작전을 요청하세요.", analyzing: "명령의 의도와 우선순위를 분석하고 있어요…", preview: "역할 배정 완료! 작전을 실행하세요.", fire: "AQUA가 빵집 화재를 진압하고 있어요.", bridge: "FIX가 파손된 다리를 복구하고 있어요.", cat: "BUDDY가 옥상 고양이에게 접근하고 있어요.", generator: "FIX가 마을 전력을 복구하고 있어요.", complete: "모든 사건 해결! 구조 결과를 집계합니다." };
-  return messages[phase];
 }
 
 function HudStat({ icon, label, value, emphasized = false }: { icon: string; label: string; value: string; emphasized?: boolean }) { return <div className={`hud-stat ${emphasized ? "emphasized" : ""}`}><img src={`${ASSET}/ui/icons/pp_ui_icon_${icon}.png`} alt="" /><span>{label}</span><strong>{value}</strong></div>; }

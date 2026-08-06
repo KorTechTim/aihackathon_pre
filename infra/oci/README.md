@@ -3,7 +3,7 @@
 대상은 공인 IP가 연결된 Ubuntu 22.04 VM `pixel-panic-api-prod-01`입니다. 브라우저는 VM을 호출하지 않습니다. Vercel 서버 라우트가 공유 Bearer 토큰을 사용해 VM의 TCP 8080으로 요청합니다.
 
 ```text
-사용자 브라우저 → Vercel same-origin /api/plan → OCI VM 공인 IP:8080 → OpenAI
+사용자 브라우저 → Vercel same-origin /api/dialogue → OCI VM 공인 IP:8080 → OpenAI
 ```
 
 ## 1. 네트워크 선행 조건
@@ -79,9 +79,9 @@ docker compose --env-file /etc/pixel-panic/backend.env -f docker-compose.yml up 
 docker compose --env-file /etc/pixel-panic/backend.env -f docker-compose.yml ps
 curl --fail http://127.0.0.1:8080/health
 curl -sS -o /dev/null -w '%{http_code}\n' \
-  -X POST http://127.0.0.1:8080/v1/plan \
+  -X POST http://127.0.0.1:8080/api/dialogue \
   -H 'Content-Type: application/json' \
-  --data '{"command":"화재를 먼저 진압해줘"}'
+  --data '{"speaker":"FIX","personality":"침착한 정비 로봇","situation":"hydrant_broken","facts":{"hydrant":"broken"},"choiceIds":["repair","detour"],"language":"ko"}'
 ```
 
 마지막 명령은 인증 헤더가 없으므로 `401`이어야 합니다. 전체 로그 대신 다음처럼 제한된 최근 로그만 확인하고 command나 비밀값이 없는지 점검합니다.
@@ -116,11 +116,11 @@ Vercel Production과 Preview에 다음 서버 전용 값을 등록하고 새로 
 ```env
 OCI_BACKEND_URL=http://OCI_PUBLIC_IP:8080
 OCI_BACKEND_TOKEN=SAME_VALUE_AS_BACKEND_SHARED_TOKEN
-OCI_BACKEND_TIMEOUT_MS=6500
+OCI_BACKEND_TIMEOUT_MS=5000
 NEXT_PUBLIC_ENABLE_TEST_DEBUG=0
 ```
 
-Vercel에서 `OPENAI_API_KEY`와 `OPENAI_MODEL`을 제거합니다. 브라우저 네트워크에는 same-origin `/api/plan`만 보여야 하며, 요청 ID는 Vercel 로그와 OCI 로그에서 일치해야 합니다.
+Vercel에서 `OPENAI_API_KEY`와 `OPENAI_MODEL`을 제거합니다. 브라우저 네트워크에는 same-origin `/api/dialogue`만 보여야 하며, 요청 ID는 Vercel 로그와 OCI 로그에서 일치해야 합니다. 게임 판정과 상태 전이는 브라우저의 결정론적 엔진이 수행하므로 OCI가 중단되어도 정적 대사 fallback으로 플레이를 끝낼 수 있어야 합니다.
 
 ## 8. 업데이트와 롤백
 

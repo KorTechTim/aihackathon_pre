@@ -24,14 +24,15 @@ assert.deepEqual(trackedFiles.filter((file) => file.endsWith(".env.production") 
 const publicSecretNames = textFiles.filter(({ text }) => /NEXT_PUBLIC_[A-Z0-9_]*(?:KEY|TOKEN|SECRET)/.test(text)).map(({ file }) => file);
 assert.deepEqual(publicSecretNames, [], "Public environment variable name looks secret");
 
-const nextRoute = readFileSync("app/api/plan/route.ts", "utf8");
+const nextRoutes = ["app/api/plan/route.ts", "app/api/dialogue/route.ts"].map((file) => readFileSync(file, "utf8")).join("\n");
 const openAiKeyName = ["OPENAI", "API", "KEY"].join("_");
-assert.equal(nextRoute.includes(openAiKeyName), false, "Vercel Route must not read the OpenAI key");
-assert.equal(nextRoute.includes("openai"), false, "Vercel Route must not import the OpenAI SDK");
+assert.equal(nextRoutes.includes(openAiKeyName), false, "Vercel Routes must not read the OpenAI key");
+assert.equal(nextRoutes.includes('from "openai"'), false, "Vercel Routes must not import the OpenAI SDK");
 
 const page = readFileSync("app/page.tsx", "utf8");
 assert.equal(page.includes("OCI_BACKEND"), false, "Client page must not read OCI server configuration");
-assert.match(page, /const planUrl = "\/api\/plan";/);
+assert.match(page, /fetch\("\/api\/dialogue"/);
+assert.equal(/<(?:input|textarea)\b/i.test(page), false, "Client game must remain click/touch only");
 
 const rootPackage = JSON.parse(readFileSync("package.json", "utf8"));
 const backendPackage = JSON.parse(readFileSync("backend/package.json", "utf8"));
@@ -49,6 +50,7 @@ assert.match(bootstrap, /sys\.version_info >= \(3, 10\)/);
 
 const readme = readFileSync("README.md", "utf8");
 assert.match(readme, /Python `>=3\.10`/);
-assert.match(readme, /Python 3\.9/);
+assert.match(readme, /키보드나 자연어 입력 없이/);
+assert.match(readme, /GPT-5\.6은 NPC·로봇 대사만 생성/);
 
 console.log(`Repository policy PASSED: ${trackedFiles.length} tracked files checked`);

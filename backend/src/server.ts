@@ -4,10 +4,12 @@ import { loadConfig, type AppConfig } from "./config.js";
 import { registerErrorHandler } from "./middleware/error-handler.js";
 import { generateRequestId } from "./middleware/request-id.js";
 import { registerHealthRoute } from "./routes/health.js";
+import { registerDialogueRoute } from "./routes/dialogue.js";
 import { registerPlanRoute, type AuditRecord } from "./routes/plan.js";
+import { createOpenAIDialogueWriter, type DialogueWriter } from "./services/openai-dialogue.js";
 import { createOpenAIPlanner, type RescuePlanner } from "./services/openai-planner.js";
 
-export async function buildServer(options: { config?: AppConfig; planner?: RescuePlanner; audit?: (record: AuditRecord) => void; logger?: boolean } = {}): Promise<FastifyInstance> {
+export async function buildServer(options: { config?: AppConfig; planner?: RescuePlanner; dialogueWriter?: DialogueWriter; audit?: (record: AuditRecord) => void; logger?: boolean } = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig();
   const app = Fastify({
     logger: options.logger ?? config.nodeEnv !== "test",
@@ -24,6 +26,7 @@ export async function buildServer(options: { config?: AppConfig; planner?: Rescu
   registerErrorHandler(app);
   registerHealthRoute(app, config);
   registerPlanRoute(app, { config, planner: options.planner ?? createOpenAIPlanner(config), audit: options.audit });
+  registerDialogueRoute(app, { config, writer: options.dialogueWriter ?? createOpenAIDialogueWriter(config) });
   return app;
 }
 

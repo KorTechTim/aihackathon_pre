@@ -1,39 +1,58 @@
 # PIXEL PANIC — AI 구조대
 
-자연어로 `AQUA`, `FIX`, `BUDDY` 세 구조 로봇을 지휘해 90초 안에 도트 마을의 네 사고를 해결하는 NHN AI 해커톤 예선용 구조 퍼즐 게임입니다.
+연쇄적으로 번지는 마을 사고를 클릭으로 분석하고 `AQUA`, `FIX`, `BUDDY`를 올바른 순서로 배치해 구조 콤보를 만드는 NHN AI 해커톤 예선용 도트 전략 게임입니다.
 
 [PIXEL PANIC 공개 데모](https://pixel-panic-ai-rescue.vercel.app) · 데스크톱 또는 모바일 가로 화면 권장
 
 ![PIXEL PANIC 최종 타이틀](visual-regression/phase4/01_title.png)
 
+## 현재 플레이 범위
+
+- 키보드나 자연어 입력 없이 클릭·터치만으로 한 판을 완주합니다.
+- 3분 30초 동안 화재, 침수, 복합 재난의 3개 웨이브가 진행됩니다.
+- 실제 판정에 사용하는 사고 10개와 연쇄 사고 체인 2개가 있습니다.
+- 행동 순서로 판정하는 로봇 콤보 5개와 선택형 대화 이벤트 4개가 있습니다.
+- 게임 엔진이 사고 확산, 콤보, 점수, 등급을 결정론적으로 계산합니다.
+- GPT-5.6은 NPC·로봇 대사만 생성하며 실패하면 즉시 로컬 정적 대사를 사용합니다.
+
+기본 조작은 `사고 선택 → 로봇 선택 → 행동 선택`입니다. 선행 조치로 확산을 막고, 아래 대표 순서처럼 역할을 이어 붙이면 보너스 콤보를 발견할 수 있습니다.
+
+```text
+FIX 전력 차단 → BUDDY 주민 대피 → FIX 가스 차단 → AQUA 화재 진압
+BUDDY 부품 운반 → FIX 발전 시설 복구 → AQUA 수위 감소 → FIX 임시 다리 → BUDDY 구조
+```
+
+세부 규칙은 [게임 설계](docs/GAME_DESIGN.md), AI의 정확한 역할은 [AI 활용 기록](docs/AI_USAGE.md)에 정리했습니다.
+
 ## 아키텍처
 
 ![PIXEL PANIC 현재 서비스 아키텍처](docs/architecture/pixel-panic-current-architecture.png)
 
-> 예선용 현행 구성입니다. 브라우저는 Vercel의 same-origin `/api/plan`만 호출하며,
-> Vercel 서버 Route가 OCI VM의 Fastify API와 통신합니다.
-
-[편집 가능한 PowerPoint](docs/architecture/pixel-panic-current-architecture.pptx) ·
-[구조화 모델](docs/architecture/pixel-panic-current-architecture-model.json)
+브라우저는 Vercel의 same-origin API만 호출하며 OCI 주소, 공유 토큰, OpenAI API 키를 알지 못합니다.
 
 ```text
-브라우저 → Vercel Next.js same-origin /api/plan
-        → OCI Ubuntu 22.04 VM 공인 엔드포인트:8080 /v1/plan
-        → OpenAI Responses API
+브라우저 게임 ── 결정론 게임 엔진(로컬, 항상 동작)
+       │
+       └─ 선택형 대사 요청 /api/dialogue
+          → Vercel Next.js 서버 Route
+          → OCI Ubuntu VM:8080 /api/dialogue
+          → OpenAI Responses API (gpt-5.6-luna)
 ```
 
-- 브라우저는 OCI 주소나 인증 토큰을 알지 못합니다.
-- Vercel Route는 서버 전용 공유 Bearer 토큰으로 OCI를 호출합니다.
+- Vercel Route는 서버 전용 Bearer 토큰으로 OCI Fastify API를 호출합니다.
 - OpenAI API 키는 OCI VM의 저장소 밖 환경파일에만 둡니다.
-- OCI/OpenAI/네트워크/429/5xx 장애 시 Vercel Route가 동일 schema의 `LOCAL` fallback을 반환합니다.
-- OCI API는 인증 후 전달된 client IP 기준으로 분당 60회, 동시 burst 6회 제한하며 성공 계획을 60초/100개 캐시합니다.
-- Vercel은 `main`을 자동 배포하고, OCI는 승인된 `main` 커밋을 수동 반영한 뒤 systemd로 컨테이너를 재기동합니다.
+- OCI/OpenAI/네트워크/429/5xx/잘못된 응답/5초 timeout은 모두 동일한 정적 대사로 폴백합니다.
+- 선택지와 선택 결과는 미리 정의돼 있으며 LLM은 선택지, 규칙, 점수, 승패를 만들지 않습니다.
+- 기존 `/api/plan`과 OCI `/v1/plan`은 이전 데모 호환용으로 남아 있지만 현재 게임 UI는 호출하지 않습니다.
+- Vercel은 `main`을 자동 배포하고 OCI는 승인된 `main` 커밋을 수동 반영합니다.
+
+[편집 가능한 OCI PowerPoint](docs/architecture/pixel-panic-current-architecture.pptx) · [구조화 모델](docs/architecture/pixel-panic-current-architecture-model.json)
 
 프런트엔드는 Next.js 16.3, React 19.2, TypeScript, Phaser를 사용하고 백엔드는 Node.js 20, Fastify, OpenAI Node SDK, Docker로 구성됩니다.
 
 ## 최초 1회 설치
 
-지원 범위는 Node.js `>=20 <23`, Python `>=3.10`이며 Python 3.12를 권장합니다. Pillow 12.3은 Python 3.9에서 설치되지 않으므로 부트스트랩이 패키지 설치 전에 버전을 검사합니다.
+지원 Node.js 범위는 `>=20 <23`입니다. 그래픽 생성 스크립트까지 실행하려면 Python `>=3.10`이 필요합니다.
 
 ```bash
 git clone https://github.com/KorTechTim/aihackathon_pre.git
@@ -41,17 +60,15 @@ cd aihackathon_pre
 ./scripts/bootstrap_dev.sh
 ```
 
-스크립트는 프런트엔드와 backend 의존성, 프로젝트 전용 `.venv`, Pillow, Playwright Chromium을 반복 실행 가능한 방식으로 준비합니다.
-
-## 개발 실행
+## 로컬 실행
 
 ```bash
 npm run dev
 ```
 
-브라우저에서 `http://localhost:3000`을 엽니다. Vercel 프록시용 서버 환경변수가 없으면 `/api/plan`이 OpenAI를 직접 호출하지 않고 즉시 fallback 계획을 반환합니다.
+브라우저에서 `http://localhost:3000`을 엽니다. OCI 환경변수가 없더라도 `/api/dialogue`가 로컬 대사를 반환하므로 첫 화면부터 결과 화면까지 플레이할 수 있습니다.
 
-OCI backend만 개발할 때는 저장소 밖 개발용 환경파일에 테스트 공유 토큰을 설정한 뒤 실행합니다.
+OCI backend만 개발할 때는 저장소 밖 환경파일에 테스트 공유 토큰을 설정한 뒤 실행합니다.
 
 ```bash
 npm --prefix backend run dev
@@ -65,9 +82,10 @@ npm --prefix backend run dev
 |---|---|---|
 | `OCI_BACKEND_URL` | Vercel server | `http://OCI_PUBLIC_IP:8080` |
 | `OCI_BACKEND_TOKEN` | Vercel server | OCI 공유 토큰과 같은 서버 전용 값 |
-| `OCI_BACKEND_TIMEOUT_MS` | Vercel server | 기본 6500ms |
+| `OCI_BACKEND_TIMEOUT_MS` | Vercel server | 권장 5000ms |
 | `OPENAI_API_KEY` | OCI backend | OpenAI 서버 전용 키 |
 | `OPENAI_MODEL` | OCI backend | 기본 `gpt-5.6-luna` |
+| `OPENAI_TIMEOUT_MS` | OCI backend | 최대 5000ms |
 | `BACKEND_SHARED_TOKEN` | OCI backend | 최소 32바이트 공유 토큰 |
 | `TRUST_PROXY_HOPS` | OCI backend | Vercel 전달 IP 한 홉 신뢰 |
 
@@ -78,34 +96,24 @@ npm --prefix backend run dev
 ```bash
 npm run policy:verify   # 경로·비밀정보·버전 정책
 npm run assets:verify   # 그래픽 규격·예산·매니페스트
-npm run typecheck      # 프런트와 backend TypeScript
-npm run test:unit      # 상태 모델과 Vercel 프록시
-npm run test:backend   # 인증/health/plan/fallback/rate/cache/logging
-npm run build:test     # QA debug snapshot을 포함한 production build
-npm run qa:full        # 전체 플레이/fallback/순서/종료 경합
-npm run ci             # 로컬 검증 전체
-npm run ci:docker      # backend 이미지 build와 컨테이너 인증/health
+npm run typecheck       # 프런트와 backend TypeScript
+npm run test:unit       # 게임 엔진과 Vercel 프록시
+npm run test:backend    # 인증/health/dialogue/fallback/rate limit
+npm run build:test      # QA debug snapshot 포함 production build
+npm run qa:full         # 클릭 완주/fallback/반응형/종료 테스트
+npm run ci              # 로컬 검증 전체
+npm run ci:docker       # backend 이미지와 컨테이너 health
 ```
 
-브라우저 QA는 항상 same-origin `/api/plan`을 mock하며 실제 OpenAI 유료 요청을 실행하지 않습니다. 실제 VM 점검용 `qa:oci-api`도 인증 정보가 보안 환경변수로 이미 주입된 관리 환경에서만 실행합니다.
-
-VM, Docker, NSG/Security List, systemd, Vercel 연결 절차는 [OCI 배포 문서](infra/oci/README.md)에 있습니다.
-
-## 에셋 생성
-
-완료된 그래픽을 재생성할 필요는 없습니다. 소스 수정 후에만 아래 명령을 사용합니다.
-
-```bash
-npm run assets:generate
-npm run assets:verify
-```
+브라우저 QA는 same-origin `/api/dialogue`를 mock해 유료 OpenAI 요청을 실행하지 않습니다. 실제 VM 점검용 `qa:oci-api`는 인증 정보가 보안 환경변수로 주입된 관리 환경에서만 실행합니다.
 
 ## 주요 문서
 
-- [그래픽 작업 지시서](PIXEL_PANIC_GRAPHICS_4_PHASE_WORK_ORDER_KO.md)
-- [Phase 3 결과](PHASE_3_REPORT.md) / [Phase 4 최종 결과](PHASE_4_FINAL_REPORT.md)
-- [통합 에셋 매니페스트](frontend/public/assets/pixel-panic/manifests/asset-manifest.json)
+- [게임 설계와 결정론 규칙](docs/GAME_DESIGN.md)
+- [AI 활용 기록](docs/AI_USAGE.md)
+- [QA 체크리스트](docs/QA_CHECKLIST.md)
+- [이번 Codex 작업 범위와 완료 기준](docs/CODEX_WORK_ORDER.md)
 - [OCI 배포 문서](infra/oci/README.md)
-- [배포 전 수정 결과](PRE_OCI_DEPLOYMENT_FIX_REPORT.md)
+- [통합 에셋 매니페스트](public/assets/pixel-panic/manifests/asset-manifest.json)
 
-본 저장소의 캐릭터, UI, 배경, 효과와 로고는 이 프로젝트를 위해 제작한 오리지널 에셋입니다.
+본 저장소의 캐릭터, UI, 배경, 효과와 로고는 이 프로젝트를 위해 제작한 오리지널 에셋입니다. 오픈소스 런타임 라이선스는 각 패키지와 lockfile을 기준으로 확인할 수 있습니다.

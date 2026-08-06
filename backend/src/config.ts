@@ -34,7 +34,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     nodeEnv,
     openaiApiKey: env.OPENAI_API_KEY?.trim() || undefined,
     openaiModel: env.OPENAI_MODEL?.trim() || "gpt-5.6-luna",
-    openaiTimeoutMs: positiveInt(env.OPENAI_TIMEOUT_MS, 6_000, 6_000),
+    openaiTimeoutMs: positiveInt(env.OPENAI_TIMEOUT_MS, 5_000, 5_000),
     backendSharedToken,
     trustProxyHops,
     rateLimitMax: positiveInt(env.RATE_LIMIT_MAX, 60, 1_000),

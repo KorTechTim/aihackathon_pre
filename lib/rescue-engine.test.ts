@@ -1,0 +1,97 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  ACTIONS,
+  COMBOS,
+  INCIDENT_IDS,
+  advanceGame,
+  createInitialGame,
+  getGrade,
+  getIncidentProgress,
+  startAction,
+  type ActionId,
+  type IncidentId,
+  type RescueGameState,
+} from "./rescue-engine";
+
+function skipBriefing(state: RescueGameState): RescueGameState {
+  return advanceGame(state, 2_000, 2);
+}
+
+function complete(state: RescueGameState, incidentId: IncidentId, actionId: ActionId): RescueGameState {
+  const started = startAction(state, incidentId, actionId);
+  assert.equal(started.ok, true, started.error ?? "action should start");
+  let next = started.state;
+  const acceleratedTicks = Math.ceil(ACTIONS[actionId].durationMs / 8_000);
+  for (let index = 0; index < acceleratedTicks; index += 1) next = advanceGame(next, 2_000, 4);
+  return next;
+}
+
+test("초기 상태는 고정 시드와 3분 30초 타이머를 사용한다", () => {
+  const first = createInitialGame();
+  const second = createInitialGame();
+  assert.deepEqual(first, second);
+  assert.equal(first.remainingMs, 210_000);
+  assert.equal(first.incidents.electrical_short.status, "active");
+  assert.equal(first.incidents.bakery_fire.status, "warning");
+});
+
+test("선행 전력 차단은 합선 확산과 후속 화재 활성화를 막는다", () => {
+  let state = skipBriefing(createInitialGame());
+  state = complete(state, "electrical_short", "cut_power");
+  state = advanceGame(state, 2_000, 4);
+  state = advanceGame(state, 2_000, 4);
+  state = advanceGame(state, 2_000, 4);
+  assert.equal(state.incidents.electrical_short.status, "resolved");
+  assert.equal(state.incidents.electrical_short.spreadCount, 0);
+  assert.equal(state.incidents.bakery_fire.status, "warning");
+});
+
+test("사고를 방치하면 고정 타이머 뒤 후속 사고가 활성화되고 보존율이 감소한다", () => {
+  let state = skipBriefing(createInitialGame());
+  for (let index = 0; index < 5; index += 1) state = advanceGame(state, 2_000, 2);
+  assert.equal(state.incidents.electrical_short.spreadCount, 1);
+  assert.equal(state.incidents.bakery_fire.status, "active");
+  assert.equal(state.villagePreservation < 100, true);
+});
+
+test("올바른 FIX → AQUA 순서만 전력 차단 화재 콤보로 판정한다", () => {
+  let correct = skipBriefing(createInitialGame());
+  correct = complete(correct, "electrical_short", "cut_power");
+  correct = complete(correct, "bakery_fire", "evacuate");
+  correct = complete(correct, "gas_risk", "shut_gas");
+  correct = complete(correct, "bakery_fire", "extinguish");
+  assert.equal(correct.foundCombos.includes("power_cut_fire"), true);
+  assert.equal(correct.foundCombos.includes("evacuate_gas_fire"), true);
+
+  let wrong = skipBriefing(createInitialGame());
+  wrong = complete(wrong, "bakery_fire", "extinguish");
+  wrong = complete(wrong, "electrical_short", "cut_power");
+  assert.equal(wrong.foundCombos.includes("power_cut_fire"), false);
+});
+
+test("정의된 콤보는 정확히 5개이며 중복 획득되지 않는다", () => {
+  assert.equal(COMBOS.length, 5);
+  assert.equal(new Set(COMBOS.map((combo) => combo.id)).size, 5);
+});
+
+test("선택 사고의 해결 진행률은 로봇 작업 상태에서 결정론적으로 계산된다", () => {
+  let state = skipBriefing(createInitialGame());
+  assert.equal(getIncidentProgress(state, "electrical_short"), 0);
+  state = startAction(state, "electrical_short", "cut_power").state;
+  state = advanceGame(state, 2_000);
+  assert.equal(getIncidentProgress(state, "electrical_short"), 33);
+  state = advanceGame(state, 2_000);
+  state = advanceGame(state, 2_000);
+  assert.equal(getIncidentProgress(state, "electrical_short"), 100);
+});
+
+test("등급은 보존율·구조·콤보 조건으로 결정된다", () => {
+  const state = createInitialGame();
+  assert.equal(getGrade({ ...state, villagePreservation: 94, rescuedResidents: 9, foundCombos: ["power_cut_fire", "parts_repair", "clear_firebreak"] }), "S");
+  assert.equal(getGrade({ ...state, villagePreservation: 80 }), "A");
+  assert.equal(getGrade({ ...state, villagePreservation: 60 }), "B");
+  assert.equal(getGrade({ ...state, villagePreservation: 20 }), "C");
+  assert.equal(getGrade({ ...state, villagePreservation: 0 }), "C");
+  assert.equal(INCIDENT_IDS.length >= 8, true);
+});

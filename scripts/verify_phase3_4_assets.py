@@ -91,7 +91,15 @@ def main() -> None:
     page = (ROOT / "app/page.tsx").read_text(encoding="utf-8")
     for required in ("${robot}-action", "cat-hop", "fire-loop", "restore-once", "confetti-once"):
         if required not in game: failures.append(f"RUNTIME animation missing: {required}")
-    for required in ("pp_ui_screen_title_final.webp", "loading-track", "다시 시도", "phase === incident.id"):
+    for required in (
+        "pp_ui_screen_title_final.webp",
+        "loading-track",
+        "다시 시도",
+        "incident-row",
+        "robot-card",
+        "action-buttons",
+        'fetch("/api/dialogue"',
+    ):
         if required not in page: failures.append(f"UI integration missing: {required}")
     if "pp_placeholder" in game or "pp_placeholder" in page: failures.append("PLACEHOLDER reference remains in runtime")
     if not (ROOT / "assets-src/pixel-panic/ui/reference/PHASE_3_4_IMAGEGEN_PROMPTS.md").exists(): failures.append("MISSING prompt provenance")

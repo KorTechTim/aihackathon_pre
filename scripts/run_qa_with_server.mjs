@@ -24,7 +24,7 @@ async function run(script) {
 
 try {
   await waitForServer();
-  for (const script of ["scripts/smoke_phase3_4.mjs", "scripts/smoke_full_flow.mjs", "scripts/smoke_fallback.mjs", "scripts/smoke_priority_orders.mjs", "scripts/smoke_termination_races.mjs"]) await run(script);
+  for (const script of ["scripts/smoke_phase3_4.mjs", "scripts/smoke_full_flow.mjs", "scripts/smoke_fallback.mjs", "scripts/smoke_termination_races.mjs"]) await run(script);
   console.log("All browser QA suites PASSED");
 } finally {
   server.kill("SIGTERM");
