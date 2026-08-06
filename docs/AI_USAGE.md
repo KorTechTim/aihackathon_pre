@@ -39,6 +39,6 @@ LLM은 다음을 결정하지 않습니다.
 
 ## 그래픽과 오픈소스
 
-캐릭터, 맵, UI, 효과, 로고는 프로젝트용 오리지널 에셋이며 생성 과정에서 AI 이미지 제작 보조를 사용했습니다. 프레임워크와 라이브러리는 `package.json`, `backend/package.json`과 lockfile에 버전이 고정돼 있고 각 배포 패키지의 오픈소스 라이선스를 따릅니다.
+캐릭터, 맵, UI, 효과, 로고는 프로젝트용 오리지널 에셋이며 생성 과정에서 AI 이미지 제작 보조를 사용했습니다. BGM과 효과음도 프로젝트용 오리지널 음형을 코드로 작성해 Web Audio로 합성하므로 외부 음원이나 샘플을 포함하지 않습니다. 프레임워크와 라이브러리는 `package.json`, `backend/package.json`과 lockfile에 버전이 고정돼 있고 각 배포 패키지의 오픈소스 라이선스를 따릅니다.
 
 공식 모델과 API 선택 근거: [OpenAI 모델 목록](https://developers.openai.com/api/docs/models), [GPT-5.6 모델 가이드](https://developers.openai.com/api/docs/guides/latest-model)

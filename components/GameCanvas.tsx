@@ -132,8 +132,7 @@ export function GameCanvas({ phase, completedIncidents, onError }: { phase: Oper
             this.targets.set(incident, [tileX * 32 + 16, tileY * 32 + 16 + spawnData.runtimeHudOffsetY]);
             const position: [number, number] = [item.properties.marker_pixel[0], item.properties.marker_pixel[1] + spawnData.runtimeHudOffsetY];
             this.markerTargets.set(incident, position);
-            const marker = this.add.image(position[0], position[1], `marker-${incident}`).setScale(2).setDepth(15);
-            this.tweens.add({ targets: marker, y: position[1] - 7, duration: 680 + INCIDENTS.indexOf(incident) * 90, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+            const marker = this.add.image(position[0], position[1], `marker-${incident}`).setScale(2).setDepth(15).setVisible(false);
             this.markers.set(incident, marker);
           }
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GameCanvas, type OperationPhase } from "@/components/GameCanvas";
 import { PixelButton } from "@/components/PixelButton";
 import { StageViewport } from "@/components/StageViewport";
+import { PixelPanicAudio, type PixelPanicSfx } from "@/lib/audio-engine";
 import { DIALOGUE_EVENTS, buildDialogueRequest, dialogueForAction, type DialogueEventDefinition } from "@/lib/dialogue-events";
 import { deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
 import {
@@ -46,6 +47,7 @@ declare global {
       completedIncidents: LegacyIncidentId[];
       worldSnapshot: ReturnType<typeof deriveWorldSnapshot>;
       game: RescueGameState;
+      audio: () => ReturnType<PixelPanicAudio["getDebugState"]>;
     };
   }
 }
@@ -96,6 +98,23 @@ export default function Home() {
   const dialogueAbortRef = useRef<AbortController | null>(null);
   const lastTickRef = useRef<number | null>(null);
   const resultTimerRef = useRef<number | null>(null);
+  const audioRef = useRef<PixelPanicAudio | null>(null);
+  const previousWaveRef = useRef(game.wave);
+  const previousResolvedRef = useRef(getResolvedCount(game));
+  const previousComboRef = useRef(game.foundCombos.length);
+  const previousStatusRef = useRef(game.status);
+
+  const getAudio = useCallback(() => {
+    audioRef.current ??= new PixelPanicAudio();
+    return audioRef.current;
+  }, []);
+
+  const playSound = useCallback((effect: PixelPanicSfx) => {
+    if (!soundOn) return;
+    const audio = getAudio();
+    audio.play(effect);
+    if (screen === "play" && !paused && game.status === "playing") void audio.startMusic();
+  }, [game.status, getAudio, paused, screen, soundOn]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -176,16 +195,44 @@ export default function Home() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  useEffect(() => {
+    if (screen !== "play") return;
+    const audio = getAudio();
+    const resolved = getResolvedCount(game);
+    const comboCount = game.foundCombos.length;
+
+    if (game.wave !== previousWaveRef.current) audio.play("wave");
+    if (comboCount > previousComboRef.current) audio.play("combo");
+    else if (resolved > previousResolvedRef.current) audio.play("resolve");
+
+    if (game.status !== previousStatusRef.current && game.status !== "playing") {
+      audio.play(game.status === "success" ? "success" : "failure");
+      audio.stopMusic();
+    }
+
+    previousWaveRef.current = game.wave;
+    previousResolvedRef.current = resolved;
+    previousComboRef.current = comboCount;
+    previousStatusRef.current = game.status;
+  }, [game, getAudio, screen]);
+
   const visual = useMemo(() => legacyWorldState(game), [game]);
   useEffect(() => {
     if (!debugEnabled) return;
-    window.__PIXEL_PANIC_DEBUG__ = { phase: visual.phase, completedIncidents: visual.completed, worldSnapshot: deriveWorldSnapshot(visual.completed), game };
+    window.__PIXEL_PANIC_DEBUG__ = {
+      phase: visual.phase,
+      completedIncidents: visual.completed,
+      worldSnapshot: deriveWorldSnapshot(visual.completed),
+      game,
+      audio: () => audioRef.current?.getDebugState() ?? { enabled: soundOn, musicRequested: false, musicPlaying: false, contextState: "uninitialized" },
+    };
     return () => { delete window.__PIXEL_PANIC_DEBUG__; };
-  }, [game, visual]);
+  }, [game, soundOn, visual]);
 
   useEffect(() => () => {
     dialogueAbortRef.current?.abort();
     if (resultTimerRef.current !== null) window.clearTimeout(resultTimerRef.current);
+    audioRef.current?.dispose();
   }, []);
 
   const startGame = useCallback(() => {
@@ -194,11 +241,22 @@ export default function Home() {
     setPaused(false);
     setGameError(null);
     setToast(null);
-    setGame(createInitialGame());
+    const initial = createInitialGame();
+    previousWaveRef.current = initial.wave;
+    previousResolvedRef.current = 0;
+    previousComboRef.current = 0;
+    previousStatusRef.current = "playing";
+    setGame(initial);
     setScreen("play");
-  }, []);
+    if (soundOn) {
+      const audio = getAudio();
+      audio.play("dispatch");
+      void audio.startMusic();
+    }
+  }, [getAudio, soundOn]);
 
   const openDialogue = useCallback((definition: DialogueEventDefinition, incidentId: IncidentId, actionId: ActionId) => {
+    playSound("dialogue");
     dialogueAbortRef.current?.abort();
     const controller = new AbortController();
     dialogueAbortRef.current = controller;
@@ -215,7 +273,7 @@ export default function Home() {
       if (typeof data.dialogue !== "string" || data.dialogue.length > 160 || data.source !== "openai" && data.source !== "fallback") return;
       setDialogue((current) => current?.definition.id === definition.id ? { ...current, text: data.dialogue as string, source: data.source as "openai" | "fallback" } : current);
     }).catch(() => undefined).finally(() => window.clearTimeout(timeout));
-  }, [game]);
+  }, [game, playSound]);
 
   const requestAction = useCallback((actionId: ActionId) => {
     const incidentId = game.selectedIncidentId;
@@ -224,12 +282,17 @@ export default function Home() {
     const event = dialogueForAction(game, incidentId, actionId, action.robotId);
     if (event) return openDialogue(event, incidentId, actionId);
     const result = startAction(game, incidentId, actionId);
-    if (!result.ok) return setToast(result.error ?? "출동할 수 없습니다.");
+    if (!result.ok) {
+      playSound("failure");
+      return setToast(result.error ?? "출동할 수 없습니다.");
+    }
+    playSound("dispatch");
     setGame(result.state);
-  }, [game, openDialogue]);
+  }, [game, openDialogue, playSound]);
 
   const chooseDialogue = useCallback((choiceId: string) => {
     if (!dialogue) return;
+    playSound("dispatch");
     dialogueAbortRef.current?.abort();
     setGame((current) => {
       const decided = applyDialogueChoice(current, dialogue.definition.id, choiceId);
@@ -238,7 +301,50 @@ export default function Home() {
       return result.state;
     });
     setDialogue(null);
-  }, [dialogue]);
+  }, [dialogue, playSound]);
+
+  const toggleSound = useCallback(() => {
+    const next = !soundOn;
+    setSoundOn(next);
+    const audio = getAudio();
+    audio.setEnabled(next);
+    if (next) {
+      audio.play("button");
+      if (screen === "play" && !paused && game.status === "playing") void audio.startMusic();
+    }
+  }, [game.status, getAudio, paused, screen, soundOn]);
+
+  const chooseIncident = useCallback((id: IncidentId) => {
+    playSound("select");
+    setGame((current) => selectIncident(current, id));
+  }, [playSound]);
+
+  const chooseRobot = useCallback((id: RobotId) => {
+    playSound("button");
+    setGame((current) => selectRobot(current, id));
+  }, [playSound]);
+
+  const pauseGame = useCallback(() => {
+    playSound("button");
+    getAudio().stopMusic(true);
+    setPaused(true);
+  }, [getAudio, playSound]);
+
+  const resumeGame = useCallback(() => {
+    setPaused(false);
+    playSound("button");
+    if (soundOn) void getAudio().startMusic();
+  }, [getAudio, playSound, soundOn]);
+
+  const openHelp = useCallback(() => {
+    playSound("button");
+    setShowHelp(true);
+  }, [playSound]);
+
+  const closeHelp = useCallback(() => {
+    playSound("button");
+    setShowHelp(false);
+  }, [playSound]);
 
   return (
     <main className="app-shell">
@@ -249,7 +355,7 @@ export default function Home() {
       </div>
       <StageViewport>
         {screen === "loading" && <LoadingScreen progress={loadProgress} error={loadError} onRetry={() => setLoadAttempt((value) => value + 1)} />}
-        {screen === "title" && <TitleScreen soundOn={soundOn} onSound={() => setSoundOn((value) => !value)} onStart={startGame} onHelp={() => setShowHelp(true)} />}
+        {screen === "title" && <TitleScreen soundOn={soundOn} onSound={toggleSound} onStart={startGame} onHelp={openHelp} />}
         {screen === "play" && (
           <GameScreen
             game={game}
@@ -258,12 +364,12 @@ export default function Home() {
             soundOn={soundOn}
             gameError={gameError}
             toast={toast}
-            onIncident={(id) => setGame((current) => selectIncident(current, id))}
-            onRobot={(id) => setGame((current) => selectRobot(current, id))}
+            onIncident={chooseIncident}
+            onRobot={chooseRobot}
             onAction={requestAction}
-            onPause={() => setPaused(true)}
-            onSound={() => setSoundOn((value) => !value)}
-            onHelp={() => setShowHelp(true)}
+            onPause={pauseGame}
+            onSound={toggleSound}
+            onHelp={openHelp}
             onGameError={setGameError}
           />
         )}
@@ -273,15 +379,15 @@ export default function Home() {
         {game.comboBanner && screen === "play" && <div className="combo-banner"><small>PERFECT COMBO</small><strong>{game.comboBanner}</strong><span>+150</span></div>}
         {dialogue && screen === "play" && <DialogueModal view={dialogue} onChoose={chooseDialogue} />}
         {paused && screen === "play" && (
-          <Modal title="작전 일시정지" onClose={() => setPaused(false)}>
+          <Modal title="작전 일시정지" onClose={resumeGame}>
             <p>모든 사고와 로봇 타이머가 멈췄습니다.</p>
-            <div className="modal-actions"><PixelButton onClick={() => setPaused(false)}>계속하기</PixelButton><PixelButton variant="danger" onClick={() => { setGame((current) => abandonGame(current)); setPaused(false); }}>작전 포기</PixelButton></div>
+            <div className="modal-actions"><PixelButton onClick={resumeGame}>계속하기</PixelButton><PixelButton variant="danger" onClick={() => { playSound("failure"); getAudio().stopMusic(); setGame((current) => abandonGame(current)); setPaused(false); }}>작전 포기</PixelButton></div>
           </Modal>
         )}
         {showHelp && (
-          <Modal title="클릭 구조 매뉴얼" onClose={() => setShowHelp(false)}>
+          <Modal title="클릭 구조 매뉴얼" onClose={closeHelp}>
             <ol className="how-to-list"><li><b>1</b><span>지도나 왼쪽 목록에서 사고를 클릭합니다.</span></li><li><b>2</b><span>현장에 맞는 구조 로봇을 클릭합니다.</span></li><li><b>3</b><span>행동 순서를 조합해 콤보와 확산 차단을 노립니다.</span></li></ol>
-            <PixelButton onClick={() => { setShowHelp(false); if (screen !== "play") startGame(); }}>확인</PixelButton>
+            <PixelButton onClick={() => { closeHelp(); if (screen !== "play") startGame(); }}>확인</PixelButton>
           </Modal>
         )}
       </StageViewport>
@@ -410,9 +516,15 @@ function GameScreen({ game, visual, paused, soundOn, gameError, toast, onInciden
 
 function DialogueModal({ view, onChoose }: { view: DialogueView; onChoose: (choiceId: string) => void }) {
   const robot = view.definition.speaker === "주민" ? "buddy" : view.definition.speaker.toLowerCase();
+  const [incidentX, incidentY] = INCIDENTS[view.pendingAction.incidentId].mapPosition;
+  const placeRight = incidentX < 640;
+  const left = Math.max(278, Math.min(378, placeRight ? incidentX + 60 : incidentX - 580));
+  const top = Math.max(80, Math.min(342, incidentY - 110));
+  const pointerY = Math.max(42, Math.min(190, incidentY - top - 10));
+  const position = { left, top, "--dialogue-pointer-y": `${pointerY}px` } as React.CSSProperties;
   return (
     <div className="modal-backdrop dialogue-backdrop" role="presentation">
-      <section className="dialogue-card pixel-panel" role="dialog" aria-modal="true" aria-labelledby="dialogue-title">
+      <section className={`dialogue-card pixel-panel pointer-${placeRight ? "left" : "right"}`} style={position} role="dialog" aria-modal="true" aria-labelledby="dialogue-title" data-incident={view.pendingAction.incidentId}>
         <img src={`${ASSET}/ui/portraits/pp_ui_portrait_${robot}_ready.png`} alt="" />
         <div className="dialogue-copy"><span><b>{view.definition.speaker}</b><em className={view.source}>{view.source === "openai" ? "GPT LIVE" : "LOCAL SAFE"}</em></span><h2 id="dialogue-title">{view.definition.title}</h2><p>{view.text}</p></div>
         <div className="dialogue-choices">{view.definition.choices.map((choice) => <button key={choice.id} onClick={() => onChoose(choice.id)}>{choice.label}</button>)}</div>

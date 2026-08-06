@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   ACTIONS,
   COMBOS,
+  INCIDENTS,
   INCIDENT_IDS,
   advanceGame,
   createInitialGame,
@@ -34,6 +35,13 @@ test("초기 상태는 고정 시드와 3분 30초 타이머를 사용한다", (
   assert.equal(first.remainingMs, 210_000);
   assert.equal(first.incidents.electrical_short.status, "active");
   assert.equal(first.incidents.bakery_fire.status, "warning");
+});
+
+test("사고 핀 좌표는 실제 마을 시설 위치에 고정된다", () => {
+  assert.deepEqual(INCIDENTS.bakery_fire.mapPosition, [318, 220]);
+  assert.deepEqual(INCIDENTS.cat_trapped.mapPosition, [496, 142]);
+  assert.deepEqual(INCIDENTS.power_flood.mapPosition, [946, 188]);
+  assert.deepEqual(INCIDENTS.bridge_damage.mapPosition, [848, 334]);
 });
 
 test("선행 전력 차단은 합선 확산과 후속 화재 활성화를 막는다", () => {

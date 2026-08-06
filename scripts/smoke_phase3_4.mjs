@@ -11,6 +11,20 @@ await page.locator("canvas").waitFor({ state: "visible" });
 await page.getByText("CLICK RESCUE OPS").waitFor();
 assert.equal(await page.locator("input, textarea").count(), 0);
 
+await page.getByRole("button", { name: /빵집 화재, 위험도/ }).click();
+await page.getByRole("button", { name: /BUDDY 초상화/ }).click();
+await page.getByRole("button", { name: /주민 대피 7초/ }).click();
+await page.getByRole("dialog").waitFor({ state: "visible" });
+const dialoguePosition = await page.evaluate(() => {
+  const card = document.querySelector(".dialogue-card")?.getBoundingClientRect();
+  const pin = document.querySelector(".incident-pin.selected")?.getBoundingClientRect();
+  return card && pin ? { cardLeft: card.left, cardRight: card.right, cardBottom: card.bottom, pinRight: pin.right } : null;
+});
+assert.equal(Boolean(dialoguePosition && dialoguePosition.cardLeft > dialoguePosition.pinRight && dialoguePosition.cardRight <= 984 && dialoguePosition.cardBottom < 604), true);
+await page.waitForFunction(() => window.__PIXEL_PANIC_DEBUG__?.audio().musicPlaying === true);
+await page.getByRole("button", { name: "가스통 위치를 FIX에 공유" }).click();
+await page.getByRole("dialog").waitFor({ state: "hidden" });
+
 const manifestResponse = await page.request.get(`${baseUrl}/assets/pixel-panic/manifests/asset-manifest.json`);
 assert.equal(manifestResponse.ok(), true);
 const manifest = await manifestResponse.json();
