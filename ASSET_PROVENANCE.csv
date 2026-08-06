@@ -1,0 +1,3 @@
+asset_id,creator,tool,model,created_at,prompt_or_source,reference_files,manual_edits,license,approved_by
+pp_style_board,OpenAI Codex,built-in image generation,gpt-image-2,2026-08-06,assets-src/pixel-panic/style/STYLE_BOARD_PROMPT.md,,"Nearest-neighbor resize to 1920x1080; used only as art-direction source",Project-owned generated asset,pending
+phase_1_procedural_assets,OpenAI Codex,Python Pillow procedural drawing,n/a,2026-08-06,"PIXEL PANIC Phase 1 work-order palette and dimensions",pp_style_board.png,"Hand-authored pixel primitives; exact size and alpha validation",Project-owned original code output,pending

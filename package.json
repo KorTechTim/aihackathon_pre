@@ -1,0 +1,27 @@
+{
+  "name": "pixel-panic-ai-rescue",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "assets:generate": ".venv/bin/python scripts/generate_phase1_assets.py",
+    "assets:verify": ".venv/bin/python scripts/verify_phase1_assets.py",
+    "qa:screenshots": "node scripts/capture_phase1.mjs",
+    "qa:smoke": "node scripts/smoke_phase1.mjs"
+  },
+  "dependencies": {
+    "next": "latest",
+    "phaser": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "playwright": "latest",
+    "typescript": "latest"
+  }
+}
