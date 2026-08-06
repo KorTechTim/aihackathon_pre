@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { AppConfig } from "../config.js";
-import { fallbackQuiz, normalizeQuiz, quizJsonSchema, type QuizInput, type QuizResult } from "../schemas/quiz.js";
+import { fallbackQuiz, isQuizQuestionExcluded, normalizeQuiz, quizJsonSchema, type QuizInput, type QuizResult } from "../schemas/quiz.js";
 
 export interface QuizWriter {
   write(input: QuizInput): Promise<QuizResult>;
@@ -14,6 +14,11 @@ export function createOpenAIQuizWriter(config: AppConfig, injectedClient?: OpenA
   return {
     async write(input: QuizInput): Promise<QuizResult> {
       try {
+        const difficultyInstruction = input.difficulty === "hard"
+          ? "고급: 두 가지 이상의 위험 요소를 함께 판단하고, 그럴듯하지만 위험한 선택지 사이에서 올바른 우선순위를 고르게 하세요."
+          : input.difficulty === "medium"
+            ? "중급: 현장 조건을 하나 더 제시하고 안전한 행동 순서나 판단 기준을 고르게 하세요."
+            : "초급: 한 가지 핵심 안전 원칙을 바로 적용하는 쉽고 명확한 문제를 내세요.";
         const response = await client.responses.create({
           model: config.openaiModel,
           store: false,
@@ -21,7 +26,10 @@ export function createOpenAIQuizWriter(config: AppConfig, injectedClient?: OpenA
           max_output_tokens: 380,
           instructions: [
             "당신은 한국어 픽셀 구조 게임 PIXEL PANIC의 안전 상식 퀴즈 출제자입니다.",
-            "입력된 실제 장애 상황과 플레이어가 선택한 구조 행동에 직접 관련된 초급 일반 상식 문제 하나를 만드세요.",
+            "입력된 실제 장애 상황과 플레이어가 선택한 구조 행동에 직접 관련된 일반 상식 문제 하나를 만드세요.",
+            `현재 난이도 규칙: ${difficultyInstruction}`,
+            "excludedQuestions에 있는 이전 질문은 문장 그대로는 물론, 의미만 바꾼 유사 질문도 절대 다시 내지 마세요.",
+            "quizSequence가 뒤로 갈수록 앞선 문제보다 더 많은 상황 판단이 필요하도록 구성하세요.",
             "정답은 논란이 없고 실제 안전 행동에 부합해야 하며, 오답 두 개는 그럴듯하지만 명백히 위험하거나 부적절해야 합니다.",
             "보기는 반드시 a, b, c를 각각 한 번씩 사용하고 정답 ID가 보기 중 하나와 일치해야 합니다.",
             "새로운 게임 상태, 임무, 보상, 피해 또는 의료·법률적 진단을 만들지 마세요.",
@@ -34,7 +42,9 @@ export function createOpenAIQuizWriter(config: AppConfig, injectedClient?: OpenA
         try { decoded = JSON.parse(response.output_text); }
         catch { return fallbackQuiz(input.incidentId, "INVALID_OPENAI_RESPONSE"); }
         const normalized = normalizeQuiz(decoded);
-        return normalized ? { ...normalized, source: "openai" } : fallbackQuiz(input.incidentId, "INVALID_OPENAI_RESPONSE");
+        return normalized && !isQuizQuestionExcluded(normalized.question, input.excludedQuestions)
+          ? { ...normalized, source: "openai" }
+          : fallbackQuiz(input.incidentId, "INVALID_OPENAI_RESPONSE");
       } catch {
         return fallbackQuiz(input.incidentId, "OPENAI_UNAVAILABLE");
       }

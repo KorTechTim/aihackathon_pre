@@ -22,8 +22,12 @@ await titlePage.close();
 
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = collectPageErrors(page);
+const quizRequests = [];
 await page.route("**/api/dialogue", (route) => fulfillDialogue(route, "openai"));
-await page.route("**/api/quiz", (route) => fulfillQuiz(route, "openai"));
+await page.route("**/api/quiz", (route) => {
+  quizRequests.push(route.request().postDataJSON());
+  return fulfillQuiz(route, "openai");
+});
 await page.goto(`${baseUrl}/?screen=play&skipBriefing=1`, { waitUntil: "networkidle" });
 await page.locator("canvas").waitFor({ state: "visible" });
 await page.getByText("CLICK RESCUE OPS").waitFor();
@@ -32,9 +36,8 @@ assert.equal(await page.locator(".game-screen").getAttribute("data-stage-map"), 
 assert.equal(await page.locator(".mission-flow, .score-box").count(), 0);
 const operationDock = await page.locator(".operation-dock").boundingBox();
 assert.equal(Boolean(operationDock && operationDock.width <= 430 && operationDock.height <= 88), true);
-const lowerFrame = await page.locator("[data-lower-rescue-frame]").boundingBox();
-assert.equal(Boolean(lowerFrame && lowerFrame.width === 1280 && lowerFrame.height === 116 && lowerFrame.y >= 604), true);
-assert.equal(await page.locator(".lower-unit-console .lower-unit").count(), 3);
+assert.equal(await page.locator("[data-lower-rescue-frame], .lower-unit-console").count(), 0);
+assert.equal(await page.locator(".phaser-canvas").getAttribute("data-map-viewport-height"), "656");
 const incidentRects = await page.locator(".incident-pin").evaluateAll((pins) => pins.map((pin) => {
   const rect = pin.getBoundingClientRect();
   return { id: pin.getAttribute("data-incident-id"), left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
@@ -51,7 +54,7 @@ assert.equal(await page.locator('[data-incident-id="bakery_fire"]').evaluate((pi
 
 const dragSurface = page.locator(".map-drag-surface");
 const dragBox = await dragSurface.boundingBox();
-assert.equal(Boolean(dragBox), true);
+assert.equal(Boolean(dragBox && dragBox.y === 66 && dragBox.height === 654), true);
 assert.equal(await dragSurface.evaluate((element) => getComputedStyle(element).cursor), "grab");
 const initialPanX = Number(await dragSurface.getAttribute("data-map-pan-x"));
 assert.equal(initialPanX, -208);
@@ -94,7 +97,7 @@ const dialoguePosition = await page.evaluate(() => {
   const pin = document.querySelector(".incident-pin.selected")?.getBoundingClientRect();
   return card && pin ? { cardLeft: card.left, cardRight: card.right, cardBottom: card.bottom, pinRight: pin.right } : null;
 });
-assert.equal(Boolean(dialoguePosition && dialoguePosition.cardLeft > dialoguePosition.pinRight && dialoguePosition.cardRight <= 984 && dialoguePosition.cardBottom < 604), true);
+assert.equal(Boolean(dialoguePosition && dialoguePosition.cardLeft > dialoguePosition.pinRight && dialoguePosition.cardRight <= 984 && dialoguePosition.cardBottom < 710), true);
 await page.waitForFunction(() => {
   const audio = window.__PIXEL_PANIC_DEBUG__?.audio();
   return audio?.activeTrack === "mission" && audio.musicPlaying;
@@ -109,6 +112,10 @@ await page.waitForFunction(() => document.querySelector(".phaser-canvas")?.getAt
 const quiz = page.locator('[data-safety-quiz="bakery_fire"]');
 await quiz.waitFor({ state: "visible" });
 await page.waitForFunction(() => document.querySelector('[data-safety-quiz="bakery_fire"]')?.getAttribute("data-quiz-source") === "openai");
+assert.equal(await quiz.getAttribute("data-quiz-difficulty"), "easy");
+assert.deepEqual(quizRequests.map(({ quizSequence, difficulty, excludedQuestions }) => ({ quizSequence, difficulty, excludedQuestions })), [
+  { quizSequence: 1, difficulty: "easy", excludedQuestions: [] },
+]);
 assert.match(await quiz.locator(".safety-quiz-question").innerText(), /빵집 화재/);
 await quiz.locator('[data-quiz-option="a"]').click();
 assert.equal(await quiz.getAttribute("data-quiz-status"), "wrong");
@@ -137,10 +144,10 @@ const waveThreePage = await browser.newPage({ viewport: { width: 1280, height: 7
 await waveThreePage.goto(`${baseUrl}/?screen=play&skipBriefing=1&qaAll=1`, { waitUntil: "networkidle" });
 await waveThreePage.locator('.game-screen[data-stage-map="highland"]').waitFor();
 const highlandNpcPosition = await waveThreePage.locator('[data-npc-id="npc_boram"]').evaluate((node) => ({ left: node.style.left, top: node.style.top }));
-assert.deepEqual(highlandNpcPosition, { left: "725px", top: "193px" });
+assert.deepEqual(highlandNpcPosition, { left: "725px", top: "232px" });
 const highlandIncidentPosition = await waveThreePage.locator('[data-incident-id="house_fire"]').evaluate((node) => ({ left: node.style.left, top: node.style.top }));
-assert.deepEqual(highlandIncidentPosition, { left: "985px", top: "445px" });
+assert.deepEqual(highlandIncidentPosition, { left: "985px", top: "523px" });
 await waveThreePage.close();
 assert.deepEqual([...titleErrors, ...errors], []);
 await browser.close();
-console.log("Responsive smoke PASSED: lower rescue command frame, arrival-triggered AI safety quiz, step-by-step road routes and exact robot targets, title/mission audio, 9 rotating maps, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");
+console.log("Responsive smoke PASSED: full-height map, arrival-triggered AI safety quiz, step-by-step road routes and exact robot targets, title/mission audio, 9 rotating maps, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");

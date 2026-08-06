@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSafetyQuizRequest, FALLBACK_SAFETY_QUIZZES, normalizeSafetyQuiz } from "./safety-quiz";
-import { createInitialGame } from "./rescue-engine";
+import {
+  buildSafetyQuizRequest,
+  fallbackSafetyQuiz,
+  FALLBACK_SAFETY_QUIZZES,
+  getSafetyQuizDifficulty,
+  isSafetyQuizQuestionExcluded,
+  normalizeSafetyQuiz,
+} from "./safety-quiz";
+import { createInitialGame, INCIDENTS, INCIDENT_IDS } from "./rescue-engine";
 
 test("모든 긴급 상황은 정답 하나를 가진 로컬 안전 퀴즈를 제공한다", () => {
   assert.equal(Object.keys(FALLBACK_SAFETY_QUIZZES).length, 10);
@@ -12,12 +19,42 @@ test("모든 긴급 상황은 정답 하나를 가진 로컬 안전 퀴즈를 �
   });
 });
 
-test("퀴즈 요청에는 현재 장애와 선택 행동 정보만 담는다", () => {
-  const request = buildSafetyQuizRequest(createInitialGame(), "electrical_short", "cut_power");
+test("퀴즈 요청에는 진행 순서와 이전 질문에 따른 난이도를 함께 담는다", () => {
+  const previous = "이미 출제된 충분히 긴 안전 확인 질문입니다.";
+  const request = buildSafetyQuizRequest(createInitialGame(), "electrical_short", "cut_power", { quizSequence: 4, excludedQuestions: [previous] });
   assert.deepEqual(request, {
     incidentId: "electrical_short", incidentLabel: "전기 합선", incidentType: "electrical",
-    actionId: "cut_power", actionLabel: "전력 차단", robotId: "fix", wave: 1, severity: 2, language: "ko",
+    actionId: "cut_power", actionLabel: "전력 차단", robotId: "fix", wave: 1, severity: 2,
+    quizSequence: 4, difficulty: "medium", excludedQuestions: [previous], language: "ko",
   });
+});
+
+test("문제 순서와 웨이브가 오를수록 난이도가 낮아지지 않는다", () => {
+  assert.equal(getSafetyQuizDifficulty(1, 1), "easy");
+  assert.equal(getSafetyQuizDifficulty(1, 4), "medium");
+  assert.equal(getSafetyQuizDifficulty(1, 8), "hard");
+  assert.equal(getSafetyQuizDifficulty(2, 1), "medium");
+  assert.equal(getSafetyQuizDifficulty(3, 1), "hard");
+});
+
+test("공백과 문장 부호만 다른 중복 질문을 거부하고 다른 폴백을 고른다", () => {
+  const first = fallbackSafetyQuiz("electrical_short", { actionId: "cut_power", quizSequence: 1 });
+  assert.equal(isSafetyQuizQuestionExcluded(` ${first.question.replace(/\?/g, " ? ")} `, [first.question]), true);
+  const second = fallbackSafetyQuiz("electrical_short", { actionId: "cut_power", quizSequence: 2, excludedQuestions: [first.question] });
+  assert.notEqual(second.question, first.question);
+});
+
+test("한 작전에서 가능한 16개 행동의 로컬 문제도 전부 서로 다르다", () => {
+  const history: string[] = [];
+  INCIDENT_IDS.forEach((incidentId) => {
+    INCIDENTS[incidentId].allowedActions.forEach((actionId) => {
+      const next = fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions: history, quizSequence: history.length + 1 });
+      assert.equal(isSafetyQuizQuestionExcluded(next.question, history), false, `${incidentId}/${actionId}`);
+      history.push(next.question);
+    });
+  });
+  assert.equal(history.length, 16);
+  assert.equal(new Set(history).size, 16);
 });
 
 test("중복 보기 ID와 마크다운이 포함된 AI 응답은 거부한다", () => {

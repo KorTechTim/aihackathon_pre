@@ -13,6 +13,9 @@ const body = {
   robotId: "fix",
   wave: 1,
   severity: 2,
+  quizSequence: 1,
+  difficulty: "easy",
+  excludedQuestions: [],
   language: "ko",
 } as const;
 
@@ -44,4 +47,17 @@ test("잘못된 요청은 OCI 호출 전 400으로 거부한다", async () => {
   const response = await handleQuizProxyRequest(request({ ...body, severity: 9 }), { config, fetchImpl: async () => { calls += 1; return Response.json({}); } });
   assert.equal(response.status, 400);
   assert.equal(calls, 0);
+});
+
+test("OCI가 이전 문제를 다시 보내면 중복을 폐기하고 새 폴백을 반환한다", async () => {
+  const previous = FALLBACK_SAFETY_QUIZZES.electrical_short.question;
+  const response = await handleQuizProxyRequest(request({ ...body, quizSequence: 2, excludedQuestions: [previous] }), {
+    config,
+    createRequestId: () => "quiz-duplicate",
+    fetchImpl: async () => Response.json({ ...FALLBACK_SAFETY_QUIZZES.electrical_short, source: "openai" }),
+  });
+  const result = await response.json() as { question: string; source: string; degradedReason: string };
+  assert.notEqual(result.question, previous);
+  assert.equal(result.source, "fallback");
+  assert.equal(result.degradedReason, "OCI_INVALID_RESPONSE");
 });

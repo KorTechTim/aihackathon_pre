@@ -2,6 +2,10 @@ import type { NpcDialogueId } from "./npc-dialogue";
 import type { IncidentId, RobotId } from "./rescue-engine";
 
 export const STAGE_MAP_IDS = ["day", "harbor", "highland", "canals", "railway", "rain", "night", "autumn", "winter"] as const;
+export const STAGE_MAP_TOP = 64;
+export const STAGE_MAP_SOURCE_HEIGHT = 544;
+export const STAGE_MAP_VIEWPORT_HEIGHT = 720 - STAGE_MAP_TOP;
+export const STAGE_MAP_SCALE_Y = STAGE_MAP_VIEWPORT_HEIGHT / STAGE_MAP_SOURCE_HEIGHT;
 export type StageMapId = (typeof STAGE_MAP_IDS)[number];
 export type StagePoint = readonly [number, number];
 export type LegacyIncidentId = "fire" | "bridge" | "cat" | "generator";
@@ -18,6 +22,10 @@ export type StageMapDefinition = {
   routes?: Readonly<Partial<Record<IncidentId, readonly StagePoint[]>>>;
   legacyStructureOverlays: boolean;
 };
+
+export function stageMapScreenY(y: number): number {
+  return Math.round(STAGE_MAP_TOP + (y - STAGE_MAP_TOP) * STAGE_MAP_SCALE_Y);
+}
 
 const CLASSIC_ROBOT_STARTS = { aqua: [176, 496], fix: [208, 496], buddy: [240, 496] } as const;
 const CLASSIC_NPCS = {

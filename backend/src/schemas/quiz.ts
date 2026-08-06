@@ -8,10 +8,13 @@ export const QUIZ_ACTION_IDS = [
 ] as const;
 export const QUIZ_ROBOT_IDS = ["aqua", "fix", "buddy"] as const;
 export const QUIZ_OPTION_IDS = ["a", "b", "c"] as const;
+export const QUIZ_DIFFICULTIES = ["easy", "medium", "hard"] as const;
+export const MAX_EXCLUDED_QUIZ_QUESTIONS = 24;
 
 export type QuizIncidentId = (typeof QUIZ_INCIDENT_IDS)[number];
 export type QuizActionId = (typeof QUIZ_ACTION_IDS)[number];
 export type QuizOptionId = (typeof QUIZ_OPTION_IDS)[number];
+export type QuizDifficulty = (typeof QUIZ_DIFFICULTIES)[number];
 
 export type QuizInput = {
   incidentId: QuizIncidentId;
@@ -22,6 +25,9 @@ export type QuizInput = {
   robotId: (typeof QUIZ_ROBOT_IDS)[number];
   wave: 1 | 2 | 3;
   severity: number;
+  quizSequence: number;
+  difficulty: QuizDifficulty;
+  excludedQuestions: string[];
   language: "ko";
 };
 
@@ -98,6 +104,15 @@ export function normalizeQuiz(value: unknown): QuizContent | null {
   const ids = options.map((item) => item!.id);
   if (new Set(ids).size !== 3 || !QUIZ_OPTION_IDS.every((id) => ids.includes(id))) return null;
   return { question, explanation, options: options as QuizContent["options"], correctOptionId: candidate.correctOptionId as QuizOptionId };
+}
+
+export function quizQuestionKey(question: string): string {
+  return question.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+export function isQuizQuestionExcluded(question: string, excludedQuestions: readonly string[]): boolean {
+  const key = quizQuestionKey(question);
+  return key.length > 0 && excludedQuestions.some((excluded) => quizQuestionKey(excluded) === key);
 }
 
 export function fallbackQuiz(incidentId: QuizIncidentId, degradedReason: NonNullable<QuizResult["degradedReason"]>): QuizResult {

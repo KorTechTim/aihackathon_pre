@@ -12,11 +12,13 @@ import { NPC_DIALOGUES, NPC_DIALOGUE_IDS, buildNpcDialogueRequest, type NpcDialo
 import {
   buildSafetyQuizRequest,
   fallbackSafetyQuiz,
+  isSafetyQuizQuestionExcluded,
   normalizeSafetyQuiz,
+  type SafetyQuizDifficulty,
   type SafetyQuizOptionId,
   type SafetyQuizResponse,
 } from "@/lib/safety-quiz";
-import { getStageMap, type StageMapDefinition, type StageMapId, type StagePoint } from "@/lib/stage-maps";
+import { getStageMap, stageMapScreenY, type StageMapDefinition, type StageMapId, type StagePoint } from "@/lib/stage-maps";
 import {
   ACTIONS,
   INCIDENTS,
@@ -56,6 +58,8 @@ type DialogueView = {
 type NpcSpeech = { npcId: NpcDialogueId; text: string; source: "openai" | "fallback"; loading: boolean };
 type SafetyQuizView = {
   quiz: SafetyQuizResponse;
+  difficulty: SafetyQuizDifficulty;
+  quizSequence: number;
   pendingAction: { incidentId: IncidentId; actionId: ActionId };
   loading: boolean;
   selectedOptionId: SafetyQuizOptionId | null;
@@ -134,6 +138,7 @@ export default function Home() {
   const [mapDragging, setMapDragging] = useState(false);
   const dialogueAbortRef = useRef<AbortController | null>(null);
   const quizAbortRef = useRef<AbortController | null>(null);
+  const askedQuizQuestionsRef = useRef<string[]>([]);
   const quizDispatchTimerRef = useRef<number | null>(null);
   const npcDialogueAbortRef = useRef<AbortController | null>(null);
   const npcSpeechTimerRef = useRef<number | null>(null);
@@ -329,6 +334,7 @@ export default function Home() {
     setToast(null);
     setMapPanX(0);
     setMapDragging(false);
+    askedQuizQuestionsRef.current = [];
     mapDragRef.current = null;
     const initial = createInitialGame();
     previousWaveRef.current = initial.wave;
@@ -414,29 +420,39 @@ export default function Home() {
     const action = ACTIONS[actionId];
     const pending = currentGame.robots[action.robotId].pendingAction;
     if (!pending || pending.incidentId !== incidentId || pending.actionId !== actionId) return;
-    const localFallback = fallbackSafetyQuiz(incidentId);
+    const excludedQuestions = [...askedQuizQuestionsRef.current];
+    const quizSequence = excludedQuestions.length + 1;
+    const quizRequest = buildSafetyQuizRequest(currentGame, incidentId, actionId, { quizSequence, excludedQuestions });
+    const localFallback = fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions, quizSequence });
     quizAbortRef.current?.abort();
     if (quizDispatchTimerRef.current !== null) window.clearTimeout(quizDispatchTimerRef.current);
     const controller = new AbortController();
     quizAbortRef.current = controller;
     setActionPopupOpen(false);
     closeNpcSpeech();
-    setSafetyQuiz({ quiz: localFallback, pendingAction: { incidentId, actionId }, loading: true, selectedOptionId: null, status: "answering" });
+    setSafetyQuiz({ quiz: localFallback, difficulty: quizRequest.difficulty, quizSequence, pendingAction: { incidentId, actionId }, loading: true, selectedOptionId: null, status: "answering" });
     const timeout = window.setTimeout(() => controller.abort(), 5_200);
     void fetch("/api/quiz", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildSafetyQuizRequest(currentGame, incidentId, actionId)),
+      body: JSON.stringify(quizRequest),
       signal: controller.signal,
     }).then(async (response) => {
       if (!response.ok) return localFallback;
       const data = await response.json() as { source?: unknown };
       const normalized = normalizeSafetyQuiz(data);
-      if (!normalized || data.source !== "openai" && data.source !== "fallback") return localFallback;
+      if (!normalized || isSafetyQuizQuestionExcluded(normalized.question, excludedQuestions) || data.source !== "openai" && data.source !== "fallback") return localFallback;
       return { ...normalized, source: data.source } as SafetyQuizResponse;
     }).catch(() => localFallback).then((quiz) => {
+      if (quizAbortRef.current !== controller) return;
+      const latestExcludedQuestions = askedQuizQuestionsRef.current;
+      const uniqueQuiz = isSafetyQuizQuestionExcluded(quiz.question, latestExcludedQuestions)
+        ? fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions: latestExcludedQuestions, quizSequence })
+        : quiz;
+      if (isSafetyQuizQuestionExcluded(uniqueQuiz.question, latestExcludedQuestions)) return;
+      askedQuizQuestionsRef.current = [...latestExcludedQuestions, uniqueQuiz.question];
       setSafetyQuiz((current) => current?.pendingAction.incidentId === incidentId && current.pendingAction.actionId === actionId
-        ? { ...current, quiz, loading: false }
+        ? { ...current, quiz: uniqueQuiz, loading: false }
         : current);
     }).finally(() => window.clearTimeout(timeout));
   }, [closeNpcSpeech, playSound]);
@@ -756,7 +772,7 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
             <button
               key={incident.id}
               className={`incident-pin ${runtime.status} ${game.selectedIncidentId === incident.id ? "selected" : ""}`}
-              style={{ left: stageMap.incidentPositions[incident.id][0], top: stageMap.incidentPositions[incident.id][1] }}
+              style={{ left: stageMap.incidentPositions[incident.id][0], top: stageMapScreenY(stageMap.incidentPositions[incident.id][1]) }}
               data-incident-id={incident.id}
               onClick={() => onIncident(incident.id)}
               aria-label={`${incident.label}, 위험도 ${runtime.severity}`}
@@ -774,7 +790,7 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
             <button
               key={npcId}
               className={`npc-hotspot ${npcSpeech?.npcId === npcId ? "is-speaking" : ""}`}
-              style={{ left: stageMap.npcPositions[npcId][0], top: stageMap.npcPositions[npcId][1] - 62 }}
+              style={{ left: stageMap.npcPositions[npcId][0], top: stageMapScreenY(stageMap.npcPositions[npcId][1]) - 62 }}
               data-npc-id={npcId}
               onClick={() => onNpc(npcId)}
               aria-label={`${npc.name}에게 말 걸기, ${npc.role}`}
@@ -818,7 +834,6 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
         />
       )}
 
-      <LowerRescueFrame game={game} stageMap={stageMap} />
       <footer className="operation-dock pixel-command">
         <section className="mission-log"><strong>작전 로그</strong>{game.logs.slice(-3).map((log) => <span className={log.tone} key={log.id}>› {log.message}</span>)}</section>
       </footer>
@@ -827,27 +842,6 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
       {gameError && <div className="graphics-warning" role="status">그래픽 일부를 불러오지 못했지만 게임은 계속됩니다.</div>}
       {paused && <div className="pause-dim" />}
     </section>
-  );
-}
-
-function LowerRescueFrame({ game, stageMap }: { game: RescueGameState; stageMap: StageMapDefinition }) {
-  return (
-    <div className="lower-rescue-frame" aria-hidden="true" data-lower-rescue-frame={stageMap.id}>
-      <div className="lower-frame-rail"><i /><span>PIXEL PANIC · EMERGENCY RESPONSE COMMAND</span><i /></div>
-      <section className="lower-link-console">
-        <span className="lower-rescue-badge"><img src={`${ASSET}/ui/icons/pp_ui_icon_action_rescue.png`} alt="" /><i /></span>
-        <span className="lower-link-copy"><small>RESCUE CONTROL LINK</small><strong>{stageMap.label}</strong><em>WAVE {game.wave} · CHANNEL SECURE</em></span>
-        <span className="lower-signal" aria-hidden="true">{[2, 4, 6, 3, 7, 5, 8, 4, 6, 3, 5, 2].map((height, index) => <i key={index} style={{ height: `${height * 4}px`, animationDelay: `${index * -0.07}s` }} />)}</span>
-      </section>
-      <section className="lower-unit-console">
-        <header><span>RESCUE UNIT STATUS</span><small>{ROBOT_IDS.filter((id) => game.robots[id].status === "idle").length}/3 READY</small></header>
-        <div>{ROBOT_IDS.map((robotId) => {
-          const busy = game.robots[robotId].status !== "idle";
-          return <span className={`lower-unit ${robotId} ${busy ? "is-busy" : "is-ready"}`} key={robotId}><i /><b>{ROBOT_META[robotId].name}</b><small>{busy ? "ON SITE" : "STANDBY"}</small></span>;
-        })}</div>
-      </section>
-      <span className="lower-frame-chevron left">///</span><span className="lower-frame-chevron right">///</span>
-    </div>
   );
 }
 
@@ -894,9 +888,10 @@ function ActionPopup({ incident, runtime, progress, robotId, actions, robotBusy,
 function NpcSpeechBubble({ speech, npcPosition, mapPanX, onClose }: { speech: NpcSpeech; npcPosition: StagePoint; mapPanX: number; onClose: () => void }) {
   const npc = NPC_DIALOGUES[speech.npcId];
   const anchorX = npcPosition[0] + mapPanX;
+  const anchorY = stageMapScreenY(npcPosition[1]);
   const width = 306;
   const left = Math.max(270, Math.min(984 - width - 12, anchorX - width / 2));
-  const top = Math.max(82, npcPosition[1] - 174);
+  const top = Math.max(82, anchorY - 174);
   const pointerX = Math.max(34, Math.min(width - 34, anchorX - left));
   const style = { left, top, "--npc-pointer-x": `${pointerX}px` } as React.CSSProperties;
   return (
@@ -925,10 +920,11 @@ function SafetyQuizModal({ view, onAnswer }: { view: SafetyQuizView; onAnswer: (
         data-safety-quiz={view.pendingAction.incidentId}
         data-quiz-source={view.loading ? "loading" : view.quiz.source}
         data-quiz-status={view.status}
+        data-quiz-difficulty={view.difficulty}
       >
         <header>
           <img src={`${ASSET}/ui/portraits/pp_ui_portrait_${action.robotId}_busy.png`} alt="" />
-          <span><small>AI SAFETY CHECK · {robot.name} 현장 도착</small><h2 id="safety-quiz-title">{incident.label} 안전 퀴즈</h2><em>{action.label} 전 최종 확인</em></span>
+          <span><small>AI SAFETY CHECK · {robot.name} 현장 도착</small><h2 id="safety-quiz-title">{incident.label} 안전 퀴즈</h2><em>{view.quizSequence}번 문제 · {view.difficulty === "hard" ? "고급" : view.difficulty === "medium" ? "중급" : "초급"} · {action.label} 전 최종 확인</em></span>
           <b className={view.loading ? "loading" : view.quiz.source}>{view.loading ? "GPT CONNECT" : view.quiz.source === "openai" ? "GPT LIVE" : "LOCAL SAFE"}</b>
         </header>
         {view.loading ? (
@@ -955,7 +951,8 @@ function SafetyQuizModal({ view, onAnswer }: { view: SafetyQuizView; onAnswer: (
 
 function DialogueModal({ view, incidentPosition, mapPanX, onChoose }: { view: DialogueView; incidentPosition: StagePoint; mapPanX: number; onChoose: (choiceId: string) => void }) {
   const robot = view.definition.speaker === "주민" ? "buddy" : view.definition.speaker.toLowerCase();
-  const [baseIncidentX, incidentY] = incidentPosition;
+  const [baseIncidentX, baseIncidentY] = incidentPosition;
+  const incidentY = stageMapScreenY(baseIncidentY);
   const incidentX = baseIncidentX + mapPanX;
   const leftSpace = incidentX - 256;
   const rightSpace = 984 - incidentX;
@@ -965,13 +962,13 @@ function DialogueModal({ view, incidentPosition, mapPanX, onChoose }: { view: Di
   if (rightSpace >= 580) {
     pointerSide = "left";
     left = incidentX + 60;
-    top = Math.max(80, Math.min(342, incidentY - 110));
+    top = Math.max(80, Math.min(454, incidentY - 110));
   } else if (leftSpace >= 580) {
     pointerSide = "right";
     left = incidentX - 580;
-    top = Math.max(80, Math.min(342, incidentY - 110));
+    top = Math.max(80, Math.min(454, incidentY - 110));
   } else {
-    const placeBelow = incidentY + 305 <= 594;
+    const placeBelow = incidentY + 305 <= 710;
     pointerSide = placeBelow ? "top" : "bottom";
     left = Math.max(278, Math.min(440, incidentX - 260));
     top = placeBelow ? incidentY + 55 : Math.max(80, incidentY - 305);

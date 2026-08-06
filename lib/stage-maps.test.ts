@@ -2,7 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { NPC_DIALOGUE_IDS } from "./npc-dialogue";
 import { INCIDENT_IDS } from "./rescue-engine";
-import { STAGE_MAPS, getStageMap } from "./stage-maps";
+import {
+  STAGE_MAPS,
+  STAGE_MAP_SCALE_Y,
+  STAGE_MAP_SOURCE_HEIGHT,
+  STAGE_MAP_TOP,
+  STAGE_MAP_VIEWPORT_HEIGHT,
+  getStageMap,
+  stageMapScreenY,
+} from "./stage-maps";
+
+test("지도는 HUD 아래부터 화면 하단까지 확장된다", () => {
+  assert.equal(STAGE_MAP_TOP, 64);
+  assert.equal(STAGE_MAP_SOURCE_HEIGHT, 544);
+  assert.equal(STAGE_MAP_VIEWPORT_HEIGHT, 656);
+  assert.equal(STAGE_MAP_SCALE_Y > 1.2, true);
+  assert.equal(stageMapScreenY(64), 64);
+  assert.equal(stageMapScreenY(608), 720);
+});
 
 test("기본 작전의 세 웨이브는 서로 다른 지형으로 전환된다", () => {
   assert.equal(STAGE_MAPS.length, 9);

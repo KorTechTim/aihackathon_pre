@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { ACTION_IDS, INCIDENT_IDS, ROBOT_IDS } from "../rescue-engine";
 import {
+  MAX_EXCLUDED_QUIZ_QUESTIONS,
+  SAFETY_QUIZ_DIFFICULTIES,
   fallbackSafetyQuiz,
+  isSafetyQuizQuestionExcluded,
   normalizeSafetyQuiz,
   type SafetyQuizRequest,
   type SafetyQuizResponse,
@@ -28,6 +31,10 @@ function isQuizRequest(value: unknown): value is SafetyQuizRequest {
     && ROBOT_IDS.includes(input.robotId as SafetyQuizRequest["robotId"])
     && [1, 2, 3].includes(input.wave ?? 0)
     && Number.isInteger(input.severity) && (input.severity ?? 0) >= 1 && (input.severity ?? 0) <= 3
+    && Number.isInteger(input.quizSequence) && (input.quizSequence ?? 0) >= 1 && (input.quizSequence ?? 0) <= MAX_EXCLUDED_QUIZ_QUESTIONS + 1
+    && SAFETY_QUIZ_DIFFICULTIES.includes(input.difficulty as SafetyQuizRequest["difficulty"])
+    && Array.isArray(input.excludedQuestions) && input.excludedQuestions.length <= MAX_EXCLUDED_QUIZ_QUESTIONS
+    && input.excludedQuestions.every((question) => typeof question === "string" && question.length >= 10 && question.length <= 120)
     && input.language === "ko";
 }
 
@@ -45,7 +52,12 @@ export async function handleQuizProxyRequest(request: Request, options: QuizProx
     options.logger?.({ requestId, incidentId: input.incidentId, source: response.source, upstreamStatus });
     return Response.json(response, { headers: { "X-Request-Id": requestId, "X-Pixel-Panic-Backend": "vercel-oci-proxy" } });
   };
-  const fallback = (reason: QuizDegradedReason) => record(fallbackSafetyQuiz(input.incidentId, reason));
+  const fallback = (reason: QuizDegradedReason) => record(fallbackSafetyQuiz(input.incidentId, {
+    actionId: input.actionId,
+    excludedQuestions: input.excludedQuestions,
+    degradedReason: reason,
+    quizSequence: input.quizSequence,
+  }));
   if (!config.backendUrl || !config.backendToken) return fallback("OCI_NOT_CONFIGURED");
 
   const controller = new AbortController();
@@ -73,7 +85,7 @@ export async function handleQuizProxyRequest(request: Request, options: QuizProx
     catch { return fallback("OCI_INVALID_RESPONSE"); }
     const candidate = decoded as { source?: unknown };
     const normalized = normalizeSafetyQuiz(decoded);
-    if (!normalized || candidate.source !== "openai" && candidate.source !== "fallback") return fallback("OCI_INVALID_RESPONSE");
+    if (!normalized || isSafetyQuizQuestionExcluded(normalized.question, input.excludedQuestions) || candidate.source !== "openai" && candidate.source !== "fallback") return fallback("OCI_INVALID_RESPONSE");
     return record({ ...normalized, source: candidate.source });
   } catch {
     return fallback(controller.signal.aborted ? "OCI_TIMEOUT" : "OCI_UNAVAILABLE");

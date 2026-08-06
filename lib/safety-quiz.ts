@@ -8,6 +8,9 @@ import {
 
 export const SAFETY_QUIZ_OPTION_IDS = ["a", "b", "c"] as const;
 export type SafetyQuizOptionId = (typeof SAFETY_QUIZ_OPTION_IDS)[number];
+export const SAFETY_QUIZ_DIFFICULTIES = ["easy", "medium", "hard"] as const;
+export type SafetyQuizDifficulty = (typeof SAFETY_QUIZ_DIFFICULTIES)[number];
+export const MAX_EXCLUDED_QUIZ_QUESTIONS = 24;
 
 export type SafetyQuizOption = {
   id: SafetyQuizOptionId;
@@ -30,6 +33,9 @@ export type SafetyQuizRequest = {
   robotId: "aqua" | "fix" | "buddy";
   wave: 1 | 2 | 3;
   severity: number;
+  quizSequence: number;
+  difficulty: SafetyQuizDifficulty;
+  excludedQuestions: string[];
   language: "ko";
 };
 
@@ -114,6 +120,124 @@ export const FALLBACK_SAFETY_QUIZZES: Record<IncidentId, SafetyQuizContent> = {
   ),
 };
 
+const ALTERNATE_FALLBACK_SAFETY_QUIZZES: Record<IncidentId, SafetyQuizContent> = {
+  electrical_short: quiz(
+    "전기가 흐를 수 있는 고장 전선 근처에서 안전거리를 두어야 하는 이유는 무엇일까요?",
+    ["전선 색이 변할 수 있어서", "눈에 보이지 않는 전류로 감전될 수 있어서", "휴대전화 신호가 약해져서"],
+    "b",
+    "고장 전선은 겉으로 꺼져 보여도 전류가 흐를 수 있으므로 전원 차단 전에는 접근하지 않아야 합니다.",
+  ),
+  bakery_fire: quiz(
+    "빵집 화재에서 소화기를 사용할 때 가장 먼저 확보해야 할 것은 무엇일까요?",
+    ["등 뒤의 안전한 대피로", "불길 바로 옆의 사진 촬영 위치", "닫힌 창고 안쪽 공간"],
+    "a",
+    "불이 커질 경우 즉시 물러날 수 있도록 소화 전에 등 뒤의 안전한 대피로를 확보해야 합니다.",
+  ),
+  gas_risk: quiz(
+    "가스 누출이 의심되는 공간에서 휴대전화 사용을 밖으로 나간 뒤 해야 하는 이유는 무엇일까요?",
+    ["배터리를 아끼기 위해서", "작은 전기 불꽃이 점화를 일으킬 수 있어서", "통화 소리가 밸브를 열 수 있어서"],
+    "b",
+    "가스가 찬 공간에서는 전기기기의 작은 불꽃도 점화원이 될 수 있어 안전한 곳으로 이동한 뒤 사용해야 합니다.",
+  ),
+  power_flood: quiz(
+    "침수된 전기 시설의 복구를 시작하기 전 확인 순서로 알맞은 것은 무엇일까요?",
+    ["전원 차단 확인 후 물이 없는 안전 구역에서 점검", "물속에서 먼저 작동 시험", "젖은 장갑으로 차단기 조작"],
+    "a",
+    "전원이 확실히 차단됐는지 확인하고 물과 분리된 안전 구역에서 설비 상태를 점검해야 합니다.",
+  ),
+  river_overflow: quiz(
+    "범람한 도로의 물 깊이를 알 수 없을 때 차량으로 통과하면 안 되는 이유는 무엇일까요?",
+    ["차량 색이 흐려져서", "도로 유실과 급류 세기를 눈으로 판단하기 어려워서", "내비게이션이 느려져서"],
+    "b",
+    "범람수 아래의 도로 파손과 물살은 보이지 않으므로 차량도 쉽게 떠밀리거나 고립될 수 있습니다.",
+  ),
+  bridge_damage: quiz(
+    "손상된 다리의 임시 통로를 열기 전에 반드시 확인해야 할 것은 무엇일까요?",
+    ["통행 인원과 하중을 견디는지 안전 점검", "다리 주변의 관광 안내판", "가장 빠르게 달릴 수 있는 폭"],
+    "a",
+    "임시 통로도 예상 인원과 하중을 견딜 수 있는지 확인하고 통행을 통제해야 추가 붕괴를 막을 수 있습니다.",
+  ),
+  resident_isolation: quiz(
+    "고립 주민 구조 순서를 정할 때 가장 먼저 보호해야 할 사람은 누구일까요?",
+    ["짐이 가장 많은 사람", "즉시 치료가 필요하거나 스스로 이동하기 어려운 사람", "가장 큰 목소리로 부르는 사람"],
+    "b",
+    "부상자와 어린이·노약자처럼 위험이 크고 자력 대피가 어려운 사람을 우선해 구조해야 합니다.",
+  ),
+  house_fire: quiz(
+    "민가 화재가 진압된 직후 주민이 바로 다시 들어가면 안 되는 이유는 무엇일까요?",
+    ["소방 장비가 무거워 보여서", "재발화와 유독가스, 구조 붕괴 위험이 남아 있어서", "집 안이 어두울 수 있어서"],
+    "b",
+    "불꽃이 사라진 뒤에도 숨은 불씨와 유독가스, 약해진 구조물이 남을 수 있어 안전 확인이 필요합니다.",
+  ),
+  cat_trapped: quiz(
+    "겁먹은 동물을 높은 곳에서 구조할 때 갑자기 쫓으면 안 되는 이유는 무엇일까요?",
+    ["동물이 더 높은 곳이나 가장자리로 뛰어 추락할 수 있어서", "동물의 털 색이 바뀔 수 있어서", "구조 장비가 가벼워져서"],
+    "a",
+    "겁먹은 동물의 도주 방향을 예측하기 어려우므로 주변을 통제하고 천천히 접근해야 합니다.",
+  ),
+  east_residents: quiz(
+    "여러 주민을 대피시킨 뒤 마지막으로 해야 할 확인은 무엇일까요?",
+    ["각자 가져온 짐의 개수", "출발 인원과 도착 인원을 대조해 누락자를 찾는 일", "가장 먼저 도착한 사람의 이름"],
+    "b",
+    "대피 전후 인원을 대조해야 현장에 남거나 이동 중 이탈한 주민을 빠르게 확인할 수 있습니다.",
+  ),
+};
+
+const FALLBACK_SAFETY_QUIZZES_BY_ACTION: Partial<Record<IncidentId, Partial<Record<ActionId, SafetyQuizContent>>>> = {
+  electrical_short: { cut_power: FALLBACK_SAFETY_QUIZZES.electrical_short },
+  bakery_fire: {
+    evacuate: quiz(
+      "빵집 안에 연기가 차기 시작했다면 손님을 어느 방향으로 안내해야 할까요?",
+      ["연기가 적고 불길과 반대인 비상구", "짐을 챙길 수 있는 창고", "엘리베이터가 있는 안쪽 통로"],
+      "a",
+      "불길과 연기를 피해 가장 가까운 안전한 비상구로 질서 있게 대피해야 합니다.",
+    ),
+    extinguish: FALLBACK_SAFETY_QUIZZES.bakery_fire,
+    clear_debris: quiz(
+      "화재 현장의 대피로에 상자와 잔해가 쌓였다면 먼저 어떻게 해야 할까요?",
+      ["사람들이 잔해를 뛰어넘게 한다", "불길에서 먼 안전 구역부터 통로를 확보한다", "출입문을 잠가 이동을 막는다"],
+      "b",
+      "구조대의 진입과 주민 대피가 겹치지 않도록 안전 구역에서부터 통로를 확보해야 합니다.",
+    ),
+    firebreak: quiz(
+      "불길이 옆 건물로 번질 위험이 있을 때 확산을 늦추는 방법은 무엇일까요?",
+      ["가연물을 불길 가까이 모은다", "모든 창문을 열어 바람을 만든다", "주변 가연물을 치우고 안전거리를 만든다"],
+      "c",
+      "불길 주변의 연료가 될 물건을 제거해 안전거리를 만들면 화재 확산을 늦출 수 있습니다.",
+    ),
+  },
+  gas_risk: { shut_gas: FALLBACK_SAFETY_QUIZZES.gas_risk },
+  power_flood: {
+    carry_parts: quiz(
+      "침수된 발전소로 교체 부품을 옮길 때 확인할 조건을 고르세요.",
+      ["전원 차단과 마른 운반 경로가 모두 확인됐다", "물이 얕아 보여 맨손으로 운반한다", "가장 짧은 물길을 따라 이동한다"],
+      "a",
+      "전기 설비 침수 현장에서는 전원 차단과 감전 위험이 없는 운반 경로를 함께 확인해야 합니다.",
+    ),
+    repair_power: FALLBACK_SAFETY_QUIZZES.power_flood,
+  },
+  river_overflow: { lower_water: FALLBACK_SAFETY_QUIZZES.river_overflow },
+  bridge_damage: { build_bridge: FALLBACK_SAFETY_QUIZZES.bridge_damage },
+  resident_isolation: { rescue_residents: FALLBACK_SAFETY_QUIZZES.resident_isolation },
+  house_fire: {
+    clear_debris: quiz(
+      "불탄 민가의 잔해를 치우기 전에 함께 확인해야 할 사항은 무엇일까요?",
+      ["외벽 색상과 집값", "불씨 재발화와 구조물 붕괴 위험", "가구를 옮길 순서만 확인"],
+      "b",
+      "화재 잔해에는 숨은 불씨와 약해진 구조물이 함께 있어 두 위험을 먼저 통제해야 합니다.",
+    ),
+    firebreak: quiz(
+      "강풍 속 민가 화재가 번질 때 방화선을 만들 위치로 가장 적절한 곳은 어디일까요?",
+      ["바람이 향하는 쪽의 가연물과 다음 건물 사이", "주민 대피로 한가운데", "가스통을 모아 둔 장소 주변"],
+      "a",
+      "풍향을 고려해 불길 진행 방향의 가연물을 제거하되 대피로와 위험물 주변은 피해야 합니다.",
+    ),
+    extinguish: FALLBACK_SAFETY_QUIZZES.house_fire,
+  },
+  cat_trapped: { rescue_cat: FALLBACK_SAFETY_QUIZZES.cat_trapped },
+  east_residents: { rescue_residents: FALLBACK_SAFETY_QUIZZES.east_residents },
+};
+
 function cleanText(value: unknown, maximum: number): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -139,9 +263,39 @@ export function normalizeSafetyQuiz(value: unknown): SafetyQuizContent | null {
   return { question, explanation, options: options as SafetyQuizContent["options"], correctOptionId: candidate.correctOptionId as SafetyQuizOptionId };
 }
 
-export function buildSafetyQuizRequest(game: RescueGameState, incidentId: IncidentId, actionId: ActionId): SafetyQuizRequest {
+export function safetyQuizQuestionKey(question: string): string {
+  return question.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+export function isSafetyQuizQuestionExcluded(question: string, excludedQuestions: readonly string[]): boolean {
+  const key = safetyQuizQuestionKey(question);
+  return key.length > 0 && excludedQuestions.some((excluded) => safetyQuizQuestionKey(excluded) === key);
+}
+
+export function getSafetyQuizDifficulty(wave: 1 | 2 | 3, quizSequence: number): SafetyQuizDifficulty {
+  const sequenceLevel = quizSequence >= 8 ? 3 : quizSequence >= 4 ? 2 : 1;
+  const level = Math.max(wave, sequenceLevel);
+  return level === 3 ? "hard" : level === 2 ? "medium" : "easy";
+}
+
+type SafetyQuizRequestOptions = {
+  quizSequence?: number;
+  excludedQuestions?: readonly string[];
+};
+
+export function buildSafetyQuizRequest(
+  game: RescueGameState,
+  incidentId: IncidentId,
+  actionId: ActionId,
+  options: SafetyQuizRequestOptions = {},
+): SafetyQuizRequest {
   const incident = INCIDENTS[incidentId];
   const action = ACTIONS[actionId];
+  const quizSequence = Math.max(1, Math.trunc(options.quizSequence ?? 1));
+  const excludedQuestions = (options.excludedQuestions ?? [])
+    .map((question) => question.replace(/\s+/g, " ").trim())
+    .filter((question) => question.length >= 10 && question.length <= 120)
+    .slice(-MAX_EXCLUDED_QUIZ_QUESTIONS);
   return {
     incidentId,
     incidentLabel: incident.label,
@@ -151,10 +305,28 @@ export function buildSafetyQuizRequest(game: RescueGameState, incidentId: Incide
     robotId: action.robotId,
     wave: game.wave,
     severity: game.incidents[incidentId].severity,
+    quizSequence,
+    difficulty: getSafetyQuizDifficulty(game.wave, quizSequence),
+    excludedQuestions,
     language: "ko",
   };
 }
 
-export function fallbackSafetyQuiz(incidentId: IncidentId, degradedReason?: string): SafetyQuizResponse {
-  return { ...FALLBACK_SAFETY_QUIZZES[incidentId], source: "fallback", ...(degradedReason ? { degradedReason } : {}) };
+type FallbackSafetyQuizOptions = {
+  actionId?: ActionId;
+  excludedQuestions?: readonly string[];
+  degradedReason?: string;
+  quizSequence?: number;
+};
+
+export function fallbackSafetyQuiz(incidentId: IncidentId, options: FallbackSafetyQuizOptions = {}): SafetyQuizResponse {
+  const preferred = options.actionId ? FALLBACK_SAFETY_QUIZZES_BY_ACTION[incidentId]?.[options.actionId] : undefined;
+  const candidates = [preferred, FALLBACK_SAFETY_QUIZZES[incidentId], ALTERNATE_FALLBACK_SAFETY_QUIZZES[incidentId]]
+    .filter((candidate, index, all): candidate is SafetyQuizContent => Boolean(candidate) && all.indexOf(candidate) === index);
+  const unused = candidates.find((candidate) => !isSafetyQuizQuestionExcluded(candidate.question, options.excludedQuestions ?? []));
+  const selected = unused ?? {
+    ...candidates[0],
+    question: `${Math.max(1, Math.trunc(options.quizSequence ?? 1))}단계 ${ACTIONS[options.actionId ?? INCIDENTS[incidentId].allowedActions[0]].label} 안전 확인: ${candidates[0].question}`.slice(0, 120),
+  };
+  return { ...selected, source: "fallback", ...(options.degradedReason ? { degradedReason: options.degradedReason } : {}) };
 }

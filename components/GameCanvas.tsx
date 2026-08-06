@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { canComplete, deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
 import { NPC_DIALOGUE_IDS } from "@/lib/npc-dialogue";
 import type { ActionId, IncidentId, RobotId } from "@/lib/rescue-engine";
-import { STAGE_MAPS, type StageMapDefinition } from "@/lib/stage-maps";
+import { STAGE_MAPS, STAGE_MAP_SCALE_Y, STAGE_MAP_TOP, STAGE_MAP_VIEWPORT_HEIGHT, type StageMapDefinition } from "@/lib/stage-maps";
 
 export type OperationPhase = "idle" | "analyzing" | "preview" | "fire" | "bridge" | "cat" | "generator" | "complete";
 export type ActiveRobotMission = { robotId: RobotId; incidentId: IncidentId; actionId: ActionId };
@@ -22,9 +22,10 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
   const completedRef = useRef<readonly LegacyIncidentId[]>(completedIncidents);
   const missionsRef = useRef<readonly ActiveRobotMission[]>(missions);
   const stageMapRef = useRef(stageMap);
+  const panRef = useRef(panX);
   const errorRef = useRef(onError);
   const robotArriveRef = useRef(onRobotArrive);
-  const sceneRef = useRef<{ setOperationState: (next: OperationPhase, completed: readonly LegacyIncidentId[], activeMissions: readonly ActiveRobotMission[]) => void; setStageMap: (next: StageMapDefinition) => void } | null>(null);
+  const sceneRef = useRef<{ setOperationState: (next: OperationPhase, completed: readonly LegacyIncidentId[], activeMissions: readonly ActiveRobotMission[]) => void; setStageMap: (next: StageMapDefinition) => void; setPanX: (next: number) => void } | null>(null);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -36,6 +37,10 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
     stageMapRef.current = stageMap;
     sceneRef.current?.setStageMap(stageMap);
   }, [stageMap]);
+  useEffect(() => {
+    panRef.current = panX;
+    sceneRef.current?.setPanX(panX);
+  }, [panX]);
   useEffect(() => { errorRef.current = onError; }, [onError]);
   useEffect(() => { robotArriveRef.current = onRobotArrive; }, [onRobotArrive]);
 
@@ -74,6 +79,9 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
         private currentPhase: OperationPhase = "idle";
         private completedSignature = "__uninitialized__";
         private stageBackground?: Phaser.GameObjects.Image;
+        private stageBackgroundLeft?: Phaser.GameObjects.Image;
+        private stageBackgroundRight?: Phaser.GameObjects.Image;
+        private worldLayer?: Phaser.GameObjects.Container;
         private activeMap: StageMapDefinition = stageMapRef.current;
 
         constructor() { super("rescue"); }
@@ -125,7 +133,9 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
           this.collision = this.activeMap.layout === "classic" ? collision : undefined;
           this.hudOffsetY = spawnData.runtimeHudOffsetY;
 
+          this.stageBackgroundLeft = this.add.image(0, 64, `stage-${this.activeMap.id}`).setOrigin(1, 0).setFlipX(true);
           this.stageBackground = this.add.image(0, 64, `stage-${this.activeMap.id}`).setOrigin(0);
+          this.stageBackgroundRight = this.add.image(1280, 64, `stage-${this.activeMap.id}`).setOrigin(0).setFlipX(true);
           this.createAnimations();
 
           for (const robot of ROBOTS) {
@@ -167,6 +177,17 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
             const position = this.activeMap.npcPositions[NPC_DIALOGUE_IDS[index]];
             return this.add.sprite(position[0], position[1], `npc-${npc}-idle`).setScale(2).setOrigin(0.5, 0.875).setDepth(9).play(`npc-${npc}-idle-anim`);
           });
+          const aspectLockedObjects = [
+            ...this.shadows.values(), ...this.robots.values(), ...this.markers.values(),
+            this.fire, this.smoke, this.water, this.steam, this.bridge, this.sparks,
+            this.cat, this.hearts, this.generator, this.electricity, this.restore, this.confetti,
+            ...this.residents,
+          ].filter((object): object is Phaser.GameObjects.Image | Phaser.GameObjects.Sprite => Boolean(object));
+          for (const object of aspectLockedObjects) object.setScale(object.scaleX, object.scaleY / STAGE_MAP_SCALE_Y);
+          const worldObjects = [this.stageBackgroundLeft, this.stageBackground, this.stageBackgroundRight, this.planLines, ...aspectLockedObjects]
+            .filter((object): object is Phaser.GameObjects.Image | Phaser.GameObjects.Sprite | Phaser.GameObjects.Graphics => Boolean(object))
+            .sort((first, second) => first.depth - second.depth);
+          this.worldLayer = this.add.container(panRef.current, STAGE_MAP_TOP * (1 - STAGE_MAP_SCALE_Y), worldObjects).setScale(1, STAGE_MAP_SCALE_Y);
           this.positionWorldElements();
           sceneRef.current = this;
           this.setOperationState(phaseRef.current, completedRef.current, missionsRef.current);
@@ -192,11 +213,12 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
 
         setStageMap(next: StageMapDefinition) {
           if (!this.stageBackground || !this.textures.exists(`stage-${next.id}`) || this.activeMap.id === next.id) return;
-          this.tweens.killTweensOf(this.stageBackground);
+          const backgrounds = [this.stageBackgroundLeft, this.stageBackground, this.stageBackgroundRight].filter((background): background is Phaser.GameObjects.Image => Boolean(background));
+          this.tweens.killTweensOf(backgrounds);
           this.activeMap = next;
           this.collision = next.layout === "classic" ? this.baseCollision : undefined;
-          this.stageBackground.setTexture(`stage-${next.id}`).setAlpha(0.42);
-          this.tweens.add({ targets: this.stageBackground, alpha: 1, duration: 260, ease: "Quad.easeOut" });
+          for (const background of backgrounds) background.setTexture(`stage-${next.id}`).setAlpha(0.42);
+          this.tweens.add({ targets: backgrounds, alpha: 1, duration: 260, ease: "Quad.easeOut" });
           for (const robot of ROBOTS) this.starts.set(robot, [...next.robotStarts[robot]]);
           for (const incident of LEGACY_INCIDENTS) {
             const position: [number, number] = [...next.legacyTargets[incident]];
@@ -211,6 +233,10 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
           this.missionSignatures.clear();
           this.resetActorsToBase();
           this.setOperationState(phase, completedRef.current, missionsRef.current);
+        }
+
+        setPanX(next: number) {
+          this.worldLayer?.setX(next);
         }
 
         private positionWorldElements() {
@@ -263,7 +289,10 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
           LEGACY_INCIDENTS.forEach((incident) => {
             const resolved = completed.includes(incident);
             const marker = this.markers.get(incident);
-            if (marker) marker.setAlpha(resolved ? 0.18 : 1).setScale(resolved ? 1.35 : 2);
+            if (marker) {
+              const markerScale = resolved ? 1.35 : 2;
+              marker.setAlpha(resolved ? 0.18 : 1).setScale(markerScale, markerScale / STAGE_MAP_SCALE_Y);
+            }
           });
           this.fire?.setVisible(!snapshot.fireResolved).setAlpha(1).play("fire-loop", true);
           this.smoke?.setVisible(!snapshot.fireResolved).setAlpha(1).play("smoke-loop", true);
@@ -479,5 +508,5 @@ export function GameCanvas({ phase, completedIncidents, missions, stageMap, panX
     return () => { disposed = true; sceneRef.current = null; game?.destroy(true); };
   }, []);
 
-  return <div className="phaser-canvas" ref={containerRef} style={{ transform: `translate3d(${panX}px, 0, 0)` }} data-map-pan-x={panX} data-stage-map={stageMap.id} data-world-completed="" data-world-resolved-count="0" aria-label="도트 마을 구조 작전 애니메이션" role="img" />;
+  return <div className="phaser-canvas" ref={containerRef} data-map-pan-x={panX} data-map-viewport-height={STAGE_MAP_VIEWPORT_HEIGHT} data-stage-map={stageMap.id} data-world-completed="" data-world-resolved-count="0" aria-label="화면 하단까지 확장된 도트 마을 구조 작전 지도" role="img" />;
 }

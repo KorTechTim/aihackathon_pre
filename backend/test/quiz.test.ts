@@ -12,7 +12,8 @@ const config: AppConfig = {
 };
 const payload = {
   incidentId: "electrical_short", incidentLabel: "전기 합선", incidentType: "electrical",
-  actionId: "cut_power", actionLabel: "전력 차단", robotId: "fix", wave: 1, severity: 2, language: "ko",
+  actionId: "cut_power", actionLabel: "전력 차단", robotId: "fix", wave: 1, severity: 2,
+  quizSequence: 1, difficulty: "easy", excludedQuestions: [], language: "ko",
 };
 const generated = {
   question: "합선된 전선 주변에서 가장 먼저 해야 할 일은 무엇일까요?",
