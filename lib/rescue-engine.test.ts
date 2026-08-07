@@ -5,6 +5,7 @@ import {
   COMBOS,
   INCIDENTS,
   INCIDENT_IDS,
+  TOTAL_STAGE_INCIDENTS,
   advanceGame,
   advanceToNextWave,
   canAdvanceToNextWave,
@@ -13,6 +14,8 @@ import {
   failCatRescueMinigame,
   getGrade,
   getIncidentProgress,
+  getResolvedCount,
+  getWaveIncidentIds,
   resolveActionWithSafetyQuiz,
   resolveBombDefusalMinigame,
   resolveCatRescueMinigame,
@@ -41,6 +44,18 @@ test("초기 상태는 고정 시드와 3분 30초 타이머를 사용한다", (
   assert.equal(first.remainingMs, 210_000);
   assert.equal(first.incidents.electrical_short.status, "active");
   assert.equal(first.incidents.bakery_fire.status, "warning");
+  assert.equal(first.incidents.cat_trapped.status, "warning");
+  assert.equal(first.incidents.suspicious_bomb.status, "warning");
+});
+
+test("모든 스테이지에 고양이 구조와 폭탄 해체 임무가 포함된다", () => {
+  assert.equal(INCIDENTS.cat_trapped.wave, "all");
+  assert.equal(INCIDENTS.suspicious_bomb.wave, "all");
+  for (const wave of [1, 2, 3] as const) {
+    assert.equal(getWaveIncidentIds(wave).includes("cat_trapped"), true, `wave ${wave} cat`);
+    assert.equal(getWaveIncidentIds(wave).includes("suspicious_bomb"), true, `wave ${wave} bomb`);
+  }
+  assert.equal(TOTAL_STAGE_INCIDENTS, 15);
 });
 
 test("현재 웨이브 재난을 모두 해결하면 타이머를 기다리지 않고 다음 웨이브를 연다", () => {
@@ -48,6 +63,9 @@ test("현재 웨이브 재난을 모두 해결하면 타이머를 기다리지 �
   state.incidents.electrical_short.status = "resolved";
   state.incidents.bakery_fire.status = "resolved";
   state.incidents.gas_risk.status = "resolved";
+  assert.equal(canAdvanceToNextWave(state), false, "고양이와 폭탄 임무를 남기고 다음 스테이지로 갈 수 없다");
+  state.incidents.cat_trapped.status = "resolved";
+  state.incidents.suspicious_bomb.status = "resolved";
   assert.equal(state.elapsedMs < 65_000, true);
   assert.equal(canAdvanceToNextWave(state), true);
 
@@ -56,7 +74,43 @@ test("현재 웨이브 재난을 모두 해결하면 타이머를 기다리지 �
   assert.equal(next.elapsedMs, state.elapsedMs, "다음 스테이지 전환이 남은 시간을 차감하지 않는다");
   assert.equal(next.briefingMs, 2_500);
   assert.equal(next.incidents.power_flood.status, "active");
+  assert.equal(next.incidents.cat_trapped.status, "warning");
+  assert.equal(next.incidents.cat_trapped.progress, 0);
+  assert.deepEqual(next.incidents.cat_trapped.completedActions, []);
+  assert.equal(next.incidents.suspicious_bomb.status, "warning");
+  assert.equal(next.incidents.suspicious_bomb.progress, 0);
+  assert.deepEqual(next.incidents.suspicious_bomb.completedActions, []);
   assert.equal(next.selectedIncidentId, "power_flood");
+});
+
+test("반복 미니게임 해결 기록은 스테이지가 바뀌어도 누적된다", () => {
+  let state = skipBriefing(createInitialGame());
+  state = complete(state, "electrical_short", "cut_power");
+  state = complete(state, "bakery_fire", "extinguish");
+  state = complete(state, "gas_risk", "shut_gas");
+
+  const catStart = startAction(state, "cat_trapped", "rescue_cat");
+  assert.equal(catStart.ok, true);
+  state = resolveCatRescueMinigame(catStart.state).state;
+  const bombStart = startAction(state, "suspicious_bomb", "defuse_bomb");
+  assert.equal(bombStart.ok, true);
+  state = resolveBombDefusalMinigame(bombStart.state).state;
+
+  assert.equal(getResolvedCount(state), 5);
+  state = advanceToNextWave(state);
+  assert.equal(getResolvedCount(state), 5, "다음 스테이지에서 누적 해결 수가 줄지 않는다");
+  state = skipBriefing(state);
+
+  const secondCatStart = startAction(state, "cat_trapped", "rescue_cat");
+  assert.equal(secondCatStart.ok, true);
+  state = resolveCatRescueMinigame(secondCatStart.state).state;
+  const secondBombStart = startAction(state, "suspicious_bomb", "defuse_bomb");
+  assert.equal(secondBombStart.ok, true);
+  state = resolveBombDefusalMinigame(secondBombStart.state).state;
+
+  assert.equal(getResolvedCount(state), 7);
+  assert.deepEqual(state.completedStageIncidents.filter((id) => id.endsWith(":cat_trapped")), ["1:cat_trapped", "2:cat_trapped"]);
+  assert.deepEqual(state.completedStageIncidents.filter((id) => id.endsWith(":suspicious_bomb")), ["1:suspicious_bomb", "2:suspicious_bomb"]);
 });
 
 test("사고 핀 좌표는 실제 마을 시설 위치에 고정된다", () => {

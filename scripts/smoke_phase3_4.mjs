@@ -279,10 +279,12 @@ await stagePage.goto(`${baseUrl}/?screen=play&skipBriefing=1`, { waitUntil: "net
 await stagePage.evaluate(() => {
   const game = window.__PIXEL_PANIC_DEBUG__?.game;
   if (!game) throw new Error("debug game state is unavailable");
-  for (const id of ["electrical_short", "bakery_fire", "gas_risk"]) {
+  const completedIds = ["electrical_short", "bakery_fire", "gas_risk", "cat_trapped", "suspicious_bomb"];
+  for (const id of completedIds) {
     game.incidents[id].status = "resolved";
     game.incidents[id].progress = 100;
   }
+  game.completedStageIncidents = completedIds.map((id) => `1:${id}`);
 });
 const stageNews = stagePage.locator('[data-stage-news="1"]');
 await stageNews.waitFor({ state: "visible", timeout: 3_000 });
@@ -290,6 +292,7 @@ await stagePage.waitForFunction(() => document.querySelector('[data-stage-news="
 assert.equal(stageNewsRequests.length, 1);
 assert.equal(stageNewsRequests[0].edition, "stage");
 assert.equal(stageNewsRequests[0].completedWave, 1);
+assert.match(await stageNews.innerText(), /누적 해결 임무 5건/);
 const stageNewsBounds = await stageNews.boundingBox();
 assert.equal(Boolean(stageNewsBounds && stageNewsBounds.x >= 0 && stageNewsBounds.y >= 0 && stageNewsBounds.x + stageNewsBounds.width <= 1280 && stageNewsBounds.y + stageNewsBounds.height <= 720), true);
 await stagePage.screenshot({ path: "/tmp/pixel-panic-wave-news.png" });

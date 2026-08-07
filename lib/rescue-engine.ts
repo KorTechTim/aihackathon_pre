@@ -51,7 +51,7 @@ export type IncidentDefinition = {
   shortLabel: string;
   type: string;
   nodeId: string;
-  wave: 1 | 2 | 3;
+  wave: 1 | 2 | 3 | "all";
   initialSeverity: number;
   maxSeverity: number;
   spreadAfterMs: number;
@@ -120,6 +120,7 @@ export type RescueGameState = {
   incidents: Record<IncidentId, IncidentRuntime>;
   robots: Record<RobotId, RobotRuntime>;
   actionHistory: ActionRecord[];
+  completedStageIncidents: string[];
   foundCombos: ComboDefinition["id"][];
   comboStreak: number;
   maxCombo: number;
@@ -139,7 +140,6 @@ export type RescueGameState = {
 };
 
 export const GAME_DURATION_MS = 210_000;
-export const WAVE_START_MS = [0, 65_000, 135_000] as const;
 export const WAVE_LABELS = ["화재 기초", "폭우와 침수", "복합 재난"] as const;
 
 export const ACTIONS: Record<ActionId, ActionDefinition> = {
@@ -167,9 +167,9 @@ export const INCIDENTS: Record<IncidentId, IncidentDefinition> = {
   bridge_damage: { id: "bridge_damage", label: "다리 파손", shortLabel: "다리", type: "bridge", nodeId: "bridge", wave: 2, initialSeverity: 2, maxSeverity: 3, spreadAfterMs: 22_000, spreadsTo: ["resident_isolation"], allowedActions: ["build_bridge"], requiredProgress: 100, scoreValue: 100, mapPosition: [850, 350], icon: "bridge" },
   resident_isolation: { id: "resident_isolation", label: "서쪽 주민 고립", shortLabel: "서쪽 주민", type: "rescue", nodeId: "west_house", wave: 2, initialSeverity: 1, maxSeverity: 3, spreadAfterMs: 26_000, spreadsTo: [], allowedActions: ["rescue_residents"], requiredProgress: 100, scoreValue: 100, mapPosition: [600, 470], icon: "cat" },
   house_fire: { id: "house_fire", label: "민가 확산 화재", shortLabel: "민가 화재", type: "fire", nodeId: "east_house", wave: 3, initialSeverity: 2, maxSeverity: 3, spreadAfterMs: 20_000, spreadsTo: ["east_residents"], allowedActions: ["clear_debris", "firebreak", "extinguish"], requiredProgress: 100, scoreValue: 100, mapPosition: [610, 220], icon: "fire" },
-  cat_trapped: { id: "cat_trapped", label: "옥상 고양이 고립", shortLabel: "고양이", type: "rescue", nodeId: "cat_house", wave: 3, initialSeverity: 1, maxSeverity: 2, spreadAfterMs: 30_000, spreadsTo: [], allowedActions: ["rescue_cat"], requiredProgress: 100, scoreValue: 100, mapPosition: [496, 176], icon: "cat" },
+  cat_trapped: { id: "cat_trapped", label: "옥상 고양이 고립", shortLabel: "고양이", type: "rescue", nodeId: "cat_house", wave: "all", initialSeverity: 1, maxSeverity: 2, spreadAfterMs: 30_000, spreadsTo: [], allowedActions: ["rescue_cat"], requiredProgress: 100, scoreValue: 100, mapPosition: [496, 176], icon: "cat" },
   east_residents: { id: "east_residents", label: "동쪽 주민 고립", shortLabel: "동쪽 주민", type: "rescue", nodeId: "square", wave: 3, initialSeverity: 1, maxSeverity: 3, spreadAfterMs: 28_000, spreadsTo: [], allowedActions: ["rescue_residents"], requiredProgress: 100, scoreValue: 100, mapPosition: [1110, 500], icon: "cat" },
-  suspicious_bomb: { id: "suspicious_bomb", label: "광장 폭탄 위협", shortLabel: "폭탄", type: "bomb", nodeId: "bomb_site", wave: 3, initialSeverity: 2, maxSeverity: 3, spreadAfterMs: 26_000, spreadsTo: [], allowedActions: ["defuse_bomb"], requiredProgress: 100, scoreValue: 150, mapPosition: [770, 190], icon: "bomb" },
+  suspicious_bomb: { id: "suspicious_bomb", label: "광장 폭탄 위협", shortLabel: "폭탄", type: "bomb", nodeId: "bomb_site", wave: "all", initialSeverity: 2, maxSeverity: 3, spreadAfterMs: 26_000, spreadsTo: [], allowedActions: ["defuse_bomb"], requiredProgress: 100, scoreValue: 150, mapPosition: [770, 190], icon: "bomb" },
 };
 
 export const COMBOS: readonly ComboDefinition[] = [
@@ -181,10 +181,14 @@ export const COMBOS: readonly ComboDefinition[] = [
 ] as const;
 
 const WAVE_INCIDENTS: Record<1 | 2 | 3, IncidentId[]> = {
-  1: ["electrical_short", "bakery_fire", "gas_risk"],
-  2: ["power_flood", "river_overflow", "bridge_damage", "resident_isolation"],
+  1: ["electrical_short", "bakery_fire", "gas_risk", "cat_trapped", "suspicious_bomb"],
+  2: ["power_flood", "river_overflow", "bridge_damage", "resident_isolation", "cat_trapped", "suspicious_bomb"],
   3: ["house_fire", "cat_trapped", "east_residents", "suspicious_bomb"],
 };
+
+const RECURRING_STAGE_INCIDENTS = new Set<IncidentId>(["cat_trapped", "suspicious_bomb"]);
+
+export const TOTAL_STAGE_INCIDENTS = Object.values(WAVE_INCIDENTS).reduce((total, incidents) => total + incidents.length, 0);
 
 export function getWaveIncidentIds(wave: 1 | 2 | 3): readonly IncidentId[] {
   return WAVE_INCIDENTS[wave];
@@ -213,6 +217,17 @@ function activateWave(state: RescueGameState, wave: 1 | 2 | 3): void {
   state.wave = wave;
   state.briefingMs = 2_500;
   WAVE_INCIDENTS[wave].forEach((id, index) => {
+    if (RECURRING_STAGE_INCIDENTS.has(id) && isResolvedStatus(state.incidents[id].status)) {
+      state.incidents[id] = {
+        id,
+        status: "hidden",
+        severity: INCIDENTS[id].initialSeverity,
+        progress: 0,
+        remainingSpreadMs: INCIDENTS[id].spreadAfterMs,
+        completedActions: [],
+        spreadCount: 0,
+      };
+    }
     const incident = state.incidents[id];
     if (incident.status === "hidden") incident.status = index === 0 || wave === 3 ? "active" : "warning";
   });
@@ -225,6 +240,7 @@ function cloneState(state: RescueGameState): RescueGameState {
     incidents: Object.fromEntries(INCIDENT_IDS.map((id) => [id, { ...state.incidents[id], completedActions: [...state.incidents[id].completedActions] }])) as Record<IncidentId, IncidentRuntime>,
     robots: Object.fromEntries(ROBOT_IDS.map((id) => [id, { ...state.robots[id], pendingAction: state.robots[id].pendingAction ? { ...state.robots[id].pendingAction } : undefined }])) as Record<RobotId, RobotRuntime>,
     actionHistory: [...state.actionHistory],
+    completedStageIncidents: [...state.completedStageIncidents],
     foundCombos: [...state.foundCombos],
     seenDialogues: [...state.seenDialogues],
     logs: [...state.logs],
@@ -250,6 +266,7 @@ export function createInitialGame(seed = 20260807): RescueGameState {
     }])) as unknown as Record<IncidentId, IncidentRuntime>,
     robots: Object.fromEntries(ROBOT_IDS.map((id) => [id, { id, status: "idle" as RobotStatus, currentNodeId: "rescue_hq", energy: 100 }])) as Record<RobotId, RobotRuntime>,
     actionHistory: [],
+    completedStageIncidents: [],
     foundCombos: [],
     comboStreak: 0,
     maxCombo: 0,
@@ -330,6 +347,10 @@ function resolveIncident(state: RescueGameState, incidentId: IncidentId): void {
   if (isResolvedStatus(incident.status)) return;
   incident.status = "resolved";
   incident.progress = 100;
+  if (WAVE_INCIDENTS[state.wave].includes(incidentId)) {
+    const stageIncidentId = `${state.wave}:${incidentId}`;
+    if (!state.completedStageIncidents.includes(stageIncidentId)) state.completedStageIncidents.push(stageIncidentId);
+  }
   state.score += INCIDENTS[incidentId].scoreValue;
   appendLog(state, `${INCIDENTS[incidentId].label} 해결 완료 +${INCIDENTS[incidentId].scoreValue}`, "success");
 }
@@ -514,9 +535,6 @@ export function advanceGame(state: RescueGameState, rawDeltaMs: number, timerSca
   next.comboBannerMs = Math.max(0, next.comboBannerMs - deltaMs);
   if (next.comboBannerMs === 0) next.comboBanner = null;
 
-  if (next.wave < 2 && next.elapsedMs >= WAVE_START_MS[1]) activateWave(next, 2);
-  if (next.wave < 3 && next.elapsedMs >= WAVE_START_MS[2]) activateWave(next, 3);
-
   for (const robotId of ROBOT_IDS) {
     const robot = next.robots[robotId];
     if (!robot.pendingAction) continue;
@@ -583,7 +601,7 @@ export function abandonGame(state: RescueGameState): RescueGameState {
 }
 
 export function getResolvedCount(state: RescueGameState): number {
-  return INCIDENT_IDS.filter((id) => isResolvedStatus(state.incidents[id].status)).length;
+  return state.completedStageIncidents.length;
 }
 
 export function getIncidentProgress(state: RescueGameState, incidentId: IncidentId): number {

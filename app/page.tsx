@@ -45,6 +45,7 @@ import {
   INCIDENTS,
   INCIDENT_IDS,
   ROBOT_IDS,
+  TOTAL_STAGE_INCIDENTS,
   WAVE_LABELS,
   abandonGame,
   advanceGame,
@@ -57,6 +58,7 @@ import {
   getGrade,
   getIncidentProgress,
   getResolvedCount,
+  getWaveIncidentIds,
   getVisibleIncidents,
   failCatRescueMinigame,
   failBombDefusalMinigame,
@@ -259,6 +261,9 @@ export default function Home() {
       initial.rescuedResidents = initial.status === "success" ? 9 : 3;
       initial.foundCombos = initial.status === "success" ? ["power_cut_fire", "parts_repair", "clear_firebreak"] : [];
       if (initial.status === "success") INCIDENT_IDS.forEach((id) => { initial.incidents[id].status = "resolved"; initial.incidents[id].progress = 100; });
+      if (initial.status === "success") {
+        initial.completedStageIncidents = ([1, 2, 3] as const).flatMap((wave) => getWaveIncidentIds(wave).map((id) => `${wave}:${id}`));
+      }
       setGame(initial);
       setScreen("result");
       return;
@@ -896,7 +901,7 @@ export default function Home() {
         )}
         {showHelp && (
           <Modal title="클릭 구조 매뉴얼" onClose={closeHelp} dismissible={false}>
-            <ol className="how-to-list"><li><b>1</b><span>지도 빈 공간을 좌우로 드래그해 가려진 지역을 살펴봅니다.</span></li><li><b>2</b><span>주민 머리 위 말풍선 아이콘을 클릭하면 AI 대화를 들을 수 있습니다.</span></li><li><b>3</b><span>지도나 왼쪽 목록에서 사고와 구조 로봇의 행동을 선택합니다.</span></li><li><b>4</b><span>현장 도착 후 AI 안전 퀴즈를 풀고, 고양이 구조에서는 쿠션 캐치 미니게임에 도전합니다.</span></li></ol>
+            <ol className="how-to-list"><li><b>1</b><span>지도 빈 공간을 좌우로 드래그해 가려진 지역을 살펴봅니다.</span></li><li><b>2</b><span>주민 머리 위 말풍선 아이콘을 클릭하면 AI 대화를 들을 수 있습니다.</span></li><li><b>3</b><span>지도나 왼쪽 목록에서 사고와 구조 로봇의 행동을 선택합니다.</span></li><li><b>4</b><span>현장 도착 후 AI 안전 퀴즈를 풀고, 매 스테이지의 고양이 구조와 폭탄 해체 미니게임에 도전합니다.</span></li></ol>
             <PixelButton onClick={confirmHelp}>확인</PixelButton>
           </Modal>
         )}
@@ -945,7 +950,7 @@ function GameScreen({ game, visual, stageMap, mapPanX, npcSpeech, actionPopupOpe
         <div className="hud-brand"><img src={`${ASSET}/brand/pp_brand_logo_mark.png`} alt="" /><span><strong>PIXEL PANIC</strong><small>CLICK RESCUE OPS</small></span></div>
         <HudStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} emphasized />
         <HudStat icon="village_hp" label="마을 보존" value={`${game.villagePreservation}%`} />
-        <HudStat icon="incident_count" label="해결 사고" value={`${resolvedCount}/${INCIDENT_IDS.length}`} />
+        <HudStat icon="incident_count" label="해결 임무" value={`${resolvedCount}/${TOTAL_STAGE_INCIDENTS}`} />
         <div className="wave-chip"><small>WAVE {game.wave}/3</small><strong>{WAVE_LABELS[game.wave - 1]}</strong></div>
         <button className="icon-control" onClick={onSound} aria-label={soundOn ? "소리 끄기" : "소리 켜기"}><img src={`${ASSET}/ui/icons/pp_ui_icon_sound_${soundOn ? "on" : "off"}.png`} alt="" /></button>
         <button className="icon-control" onClick={onHelp} aria-label="도움말">?</button>
@@ -1470,7 +1475,7 @@ function StageNewsTransition({ view, onContinue }: { view: StageTransitionView; 
           <span className="result-news-portrait" style={{ backgroundImage: `url(${ASSET}/characters/npcs/pp_char_npc_${interviewee.spriteId}_idle.png)` }} aria-hidden="true" />
           <div><small>현장 주민 인터뷰</small><strong>{interviewee.name} · {interviewee.role}</strong><blockquote>“{news.interviewQuote}”</blockquote></div>
         </section>
-        <footer><div><span>마을 보존 {request.villagePreservation}%</span><span>누적 해결 {request.resolvedIncidents.length}건</span></div><PixelButton onClick={onContinue}>WAVE {view.completedWave + 1} · {WAVE_LABELS[view.completedWave]} 출동</PixelButton></footer>
+        <footer><div><span>마을 보존 {request.villagePreservation}%</span><span>누적 해결 임무 {getResolvedCount(view.snapshot)}건</span></div><PixelButton onClick={onContinue}>WAVE {view.completedWave + 1} · {WAVE_LABELS[view.completedWave]} 출동</PixelButton></footer>
       </article>
     </div>
   );
@@ -1520,7 +1525,7 @@ function ResultScreen({ game, onRetry, onTitle }: { game: RescueGameState; onRet
       <div className="result-vignette" />
       <div className={`result-card ${success ? "pixel-success" : "pixel-alert"}`}>
         <div className="result-copy"><span className="result-kicker">{success ? "MISSION COMPLETE" : "MISSION REPORT"}</span><img className="grade" src={`${ASSET}/ui/pp_ui_grade_${grade.toLowerCase()}.png`} alt={`${grade} 등급`} /><div><h1>{reason}</h1><p>{success ? "결정론 엔진이 모든 구조 기록을 집계했습니다." : "확산 순서와 로봇 조합을 바꿔 다시 도전해보세요."}</p></div></div>
-        <div className="result-stats"><ResultStat icon="rescued" label="구조 주민" value={`${game.rescuedResidents}명`} /><ResultStat icon="incident_count" label="해결 사고" value={`${getResolvedCount(game)}/${INCIDENT_IDS.length}`} /><ResultStat icon="village_hp" label="마을 보존" value={`${game.villagePreservation}%`} /><ResultStat icon="command_count" label="발견 콤보" value={`${game.foundCombos.length}/5`} /><ResultStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} /><ResultStat icon="done" label="최대 콤보" value={`×${game.maxCombo}`} /></div>
+        <div className="result-stats"><ResultStat icon="rescued" label="구조 주민" value={`${game.rescuedResidents}명`} /><ResultStat icon="incident_count" label="해결 임무" value={`${getResolvedCount(game)}/${TOTAL_STAGE_INCIDENTS}`} /><ResultStat icon="village_hp" label="마을 보존" value={`${game.villagePreservation}%`} /><ResultStat icon="command_count" label="발견 콤보" value={`${game.foundCombos.length}/5`} /><ResultStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} /><ResultStat icon="done" label="최대 콤보" value={`×${game.maxCombo}`} /></div>
         <div className="result-score"><small>FINAL SCORE</small><strong>{Math.max(0, game.score).toLocaleString()}</strong></div>
         <div className="result-actions"><PixelButton variant="secondary" disabled={newsLoading} onClick={() => setNewsOpen(true)}>{newsLoading ? "AI 뉴스 작성 중" : "AI 마을 뉴스"}</PixelButton><PixelButton onClick={onRetry}>다시 출동</PixelButton><PixelButton variant="secondary" onClick={onTitle}>본부로</PixelButton></div>
       </div>
