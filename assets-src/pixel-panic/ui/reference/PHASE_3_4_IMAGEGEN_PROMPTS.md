@@ -30,3 +30,33 @@ Create a premium 16:9 pixel-art title scene for an original cute AI rescue game.
 ## 실패 배경
 
 Create a premium 16:9 pixel-art mission setback background for a family-friendly rescue game. The same detailed village at rainy blue dusk, damaged bakery, broken bridge and dark power station with tasteful warning lights. AQUA, FIX and BUDDY stand together tired but hopeful near rescue headquarters with the safe cat. Emotional but encouraging, not tragic, clear space on the right for a result panel. No text, no logo, no UI, no copyrighted characters. Polished 16-bit game art, cinematic rain and warm lamps.
+
+## AI 마을 뉴스 종이 질감
+
+- 생성일: 2026-08-07
+- 최종 에셋: `public/assets/pixel-panic/ui/textures/pp_ui_newsprint_texture.png`
+- 후처리: 생성본을 팝업 비율과 같은 900×520으로 축소
+
+Create a clean landscape sheet of vintage newspaper paper texture for an emergency rescue village newspaper UI. Richly detailed handmade newsprint paper with subtle pixel-art sensibility, tactile paper fibers, faint halftone dots, restrained fold lines, tiny registration imperfections, gently worn edges, and a calm readable center. Warm ivory and parchment with very subtle desaturated navy-blue and muted cyan ink ghosting near the edges. Flat front-facing rectangular surface with even archival lighting. Absolutely no letters, words, numbers, symbols, logos, mastheads, pictures, illustrations, UI controls, borders, frames, watermarks, shadows outside the paper, or transparent areas. No readable text of any kind.
+
+## 옥상 고양이 구조 미니게임 배경
+
+- 생성일: 2026-08-07
+- 최종 에셋: `public/assets/pixel-panic/ui/minigames/pp_ui_cat_rescue_roof.png`
+- 후처리: 생성본을 팝업 배경 비율에 맞춰 900×520으로 축소
+
+Draw a richly detailed village house roof rescue scene for a popup minigame, with a broad red-orange tiled roof spanning the upper half and an open stone courtyard below where a rescue robot can move left and right. Friendly European-inspired rescue village, sunny late afternoon, chimney, attic window, distant trees and blue sky. Premium cohesive 16-bit pixel art with crisp stepped edges, warm terracotta, cream stone, navy shadows and cyan accents. Straight-on side view with a clear vertical falling lane and calm lower courtyard. Background only: no characters, animals, robots, text, signs, UI, buttons, logos, watermarks, borders or frames.
+
+### 건물 벽체 보강 편집
+
+- 수정일: 2026-08-07
+- 수정 목적: 지붕 아래가 뚫려 보이던 초안을 완전한 2층 주택 외벽으로 교체
+
+Edit the supplied pixel-art scene so the building has a complete body below the roof. Replace the open village view under the eaves with the full front facade of a cozy two-story rescue-town house extending continuously from the roof to the ground. Preserve the exact polished 16-bit pixel-art style, pixel scale, warm daylight, color palette, camera angle, roof tiles, chimney, dormer, gutters, and overall framing. Build a believable cream-plaster and warm-brown timber facade with corner supports, a centered front door, balanced windows, stone foundation, and subtle flower boxes. Keep a wide clear rooftop for the cat, a calm central vertical falling lane in front of the facade, and only the bottom 18–22% as a flat stone walkway for the robot. Do not leave any archway, opening, distant landscape, sky, or see-through void beneath the roof. No characters, cat, robot, text, UI, logo, or watermark.
+
+### BUDDY 쿠션 캐치 포즈
+
+- 최종 에셋: `public/assets/pixel-panic/ui/minigames/pp_ui_buddy_pillow_catch.png`
+- 후처리: 초록 크로마키 제거 후 투명 RGBA 240×240으로 축소
+
+Create one front-facing full-body BUDDY rescue robot in a catching pose: a cute coral-red and pink compact robot with a cyan digital face, heart-shaped chest light, tiny emergency beacon, sturdy short legs, and two long articulated arms spread wide and raised. Its open hands support a large fluffy rectangular rescue pillow directly above its head, ready to catch a falling cat. Polished premium 16-bit pixel art with crisp stepped edges and a chunky readable silhouette. Cream pillow with pale pink stitched stripes and thick soft corners. Exactly one centered character on a perfectly flat solid #00FF00 chroma-key background. No cat, other character, ground, shadow, text, logo, border or watermark.

@@ -16,7 +16,7 @@
   "totals": {
     "P0": 1083156,
     "P1": 2843505,
-    "P2": 39408
+    "P2": 1696988
   },
   "assets": [
     {
@@ -1070,6 +1070,26 @@
       "priority": "P0"
     },
     {
+      "key": "pp_ui_buddy_pillow_catch",
+      "type": "image",
+      "url": "ui/minigames/pp_ui_buddy_pillow_catch.png",
+      "format": "png",
+      "width": 240,
+      "height": 240,
+      "bytes": 53960,
+      "priority": "P2"
+    },
+    {
+      "key": "pp_ui_cat_rescue_roof",
+      "type": "image",
+      "url": "ui/minigames/pp_ui_cat_rescue_roof.png",
+      "format": "png",
+      "width": 900,
+      "height": 520,
+      "bytes": 786680,
+      "priority": "P2"
+    },
+    {
       "key": "pp_ui_input_9s",
       "type": "image",
       "url": "ui/panels/pp_ui_input_9s.png",
@@ -1368,6 +1388,16 @@
       "height": 720,
       "bytes": 225510,
       "priority": "P0"
+    },
+    {
+      "key": "pp_ui_newsprint_texture",
+      "type": "image",
+      "url": "ui/textures/pp_ui_newsprint_texture.png",
+      "format": "png",
+      "width": 900,
+      "height": 520,
+      "bytes": 816940,
+      "priority": "P2"
     },
     {
       "key": "pp_world_building_bakery_base",

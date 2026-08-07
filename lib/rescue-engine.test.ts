@@ -7,9 +7,11 @@ import {
   INCIDENT_IDS,
   advanceGame,
   createInitialGame,
+  failCatRescueMinigame,
   getGrade,
   getIncidentProgress,
   resolveActionWithSafetyQuiz,
+  resolveCatRescueMinigame,
   startAction,
   type ActionId,
   type IncidentId,
@@ -118,4 +120,28 @@ test("등급은 보존율·구조·콤보 조건으로 결정된다", () => {
   assert.equal(getGrade({ ...state, villagePreservation: 20 }), "C");
   assert.equal(getGrade({ ...state, villagePreservation: 0 }), "C");
   assert.equal(INCIDENT_IDS.length >= 8, true);
+});
+
+test("고양이 미니게임 성공은 사고를 해결하고 실패는 재도전을 허용한다", () => {
+  const ready = skipBriefing(createInitialGame());
+  ready.wave = 3;
+  ready.incidents.cat_trapped.status = "active";
+
+  const successfulStart = startAction(ready, "cat_trapped", "rescue_cat");
+  assert.equal(successfulStart.ok, true);
+  const success = resolveCatRescueMinigame(successfulStart.state);
+  assert.equal(success.ok, true);
+  assert.equal(success.state.catRescued, true);
+  assert.equal(success.state.incidents.cat_trapped.status, "resolved");
+  assert.equal(success.state.robots.buddy.status, "idle");
+
+  const failedStart = startAction(ready, "cat_trapped", "rescue_cat");
+  assert.equal(failedStart.ok, true);
+  const failure = failCatRescueMinigame(failedStart.state);
+  assert.equal(failure.ok, true);
+  assert.equal(failure.state.catRescued, false);
+  assert.equal(failure.state.incidents.cat_trapped.status, "active");
+  assert.equal(failure.state.incidents.cat_trapped.completedActions.includes("rescue_cat"), false);
+  assert.equal(failure.state.robots.buddy.status, "idle");
+  assert.equal(startAction(failure.state, "cat_trapped", "rescue_cat").ok, true);
 });

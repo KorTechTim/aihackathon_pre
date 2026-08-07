@@ -5,10 +5,21 @@ import { GameCanvas, type ActiveRobotMission, type OperationPhase } from "@/comp
 import { PixelButton } from "@/components/PixelButton";
 import { StageViewport } from "@/components/StageViewport";
 import { PixelPanicAudio, type PixelPanicSfx } from "@/lib/audio-engine";
+import {
+  CAT_FALL_MS,
+  CAT_ROBOT_STEP,
+  CAT_WARNING_MS,
+  clampCatRobotX,
+  getCatRoamDuration,
+  getFallingCatY,
+  getRoamingCatX,
+  isCatCaught,
+} from "@/lib/cat-rescue-minigame";
 import { DIALOGUE_EVENTS, buildDialogueRequest, dialogueForAction, type DialogueEventDefinition } from "@/lib/dialogue-events";
 import { deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
 import { clampMapPanX, mapPanFromPointerDelta, revealMapAnchor } from "@/lib/map-pan";
 import { NPC_DIALOGUES, NPC_DIALOGUE_IDS, buildNpcDialogueRequest, fallbackNpcDialogue, isNpcDialogueExcluded, type NpcDialogueId } from "@/lib/npc-dialogue";
+import { buildResultNewsRequest, fallbackResultNews, normalizeResultNews, type ResultNewsRequest, type ResultNewsResponse } from "@/lib/result-news";
 import {
   buildSafetyQuizRequest,
   fallbackSafetyQuiz,
@@ -35,9 +46,11 @@ import {
   getIncidentProgress,
   getResolvedCount,
   getVisibleIncidents,
+  failCatRescueMinigame,
   selectIncident,
   selectRobot,
   resolveActionWithSafetyQuiz,
+  resolveCatRescueMinigame,
   startAction,
   type ActionId,
   type ActionDefinition,
@@ -65,6 +78,11 @@ type SafetyQuizView = {
   selectedOptionId: SafetyQuizOptionId | null;
   status: "answering" | "wrong" | "correct";
 };
+type CatRescueView = {
+  pendingAction: { incidentId: "cat_trapped"; actionId: "rescue_cat" };
+  seed: number;
+};
+type CatRescuePhase = "roaming" | "warning" | "falling" | "success" | "failure";
 type MapDragState = { pointerId: number; startClientX: number; startOffset: number; renderedWidth: number };
 
 declare global {
@@ -130,6 +148,7 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null);
   const [dialogue, setDialogue] = useState<DialogueView | null>(null);
   const [safetyQuiz, setSafetyQuiz] = useState<SafetyQuizView | null>(null);
+  const [catRescue, setCatRescue] = useState<CatRescueView | null>(null);
   const [arrivedMissionQueue, setArrivedMissionQueue] = useState<ActiveRobotMission[]>([]);
   const [npcSpeech, setNpcSpeech] = useState<NpcSpeech | null>(null);
   const [actionPopupOpen, setActionPopupOpen] = useState(false);
@@ -140,6 +159,7 @@ export default function Home() {
   const quizAbortRef = useRef<AbortController | null>(null);
   const askedQuizQuestionsRef = useRef<string[]>([]);
   const quizDispatchTimerRef = useRef<number | null>(null);
+  const catRescueAttemptRef = useRef(0);
   const npcDialogueAbortRef = useRef<AbortController | null>(null);
   const npcDialogueHistoryRef = useRef<string[]>([]);
   const npcSpeechTimerRef = useRef<number | null>(null);
@@ -218,7 +238,7 @@ export default function Home() {
   }, [loadAttempt]);
 
   useEffect(() => {
-    if (screen !== "play" || paused || safetyQuiz || game.status !== "playing") {
+    if (screen !== "play" || paused || safetyQuiz || catRescue || game.status !== "playing") {
       lastTickRef.current = null;
       return;
     }
@@ -230,7 +250,7 @@ export default function Home() {
       setGame((current) => advanceGame(current, delta, (dialogue ? 0.7 : 1) * tickScale));
     }, 250);
     return () => window.clearInterval(timer);
-  }, [dialogue, game.status, paused, safetyQuiz, screen]);
+  }, [catRescue, dialogue, game.status, paused, safetyQuiz, screen]);
 
   useEffect(() => {
     if (screen !== "play" || game.status === "playing") return;
@@ -327,6 +347,7 @@ export default function Home() {
     if (quizDispatchTimerRef.current !== null) window.clearTimeout(quizDispatchTimerRef.current);
     setDialogue(null);
     setSafetyQuiz(null);
+    setCatRescue(null);
     setArrivedMissionQueue([]);
     setNpcSpeech(null);
     setActionPopupOpen(false);
@@ -336,6 +357,7 @@ export default function Home() {
     setMapPanX(0);
     setMapDragging(false);
     askedQuizQuestionsRef.current = [];
+    catRescueAttemptRef.current = 0;
     npcDialogueHistoryRef.current = [];
     mapDragRef.current = null;
     const initial = createInitialGame();
@@ -378,7 +400,7 @@ export default function Home() {
   }, [game, playSound]);
 
   const talkToNpc = useCallback((npcId: NpcDialogueId) => {
-    if (paused || dialogue || safetyQuiz || showHelp) return;
+    if (paused || dialogue || safetyQuiz || catRescue || showHelp) return;
     const npc = NPC_DIALOGUES[npcId];
     const excludedDialogues = [...npcDialogueHistoryRef.current];
     const dialogueSequence = excludedDialogues.length + 1;
@@ -417,7 +439,7 @@ export default function Home() {
       }
       showSpeech(data.dialogue, data.source);
     }).catch(() => showSpeech(localFallback, "fallback")).finally(() => window.clearTimeout(timeout));
-  }, [dialogue, game, paused, playSound, safetyQuiz, showHelp]);
+  }, [catRescue, dialogue, game, paused, playSound, safetyQuiz, showHelp]);
 
   const closeNpcSpeech = useCallback(() => {
     npcDialogueAbortRef.current?.abort();
@@ -473,12 +495,25 @@ export default function Home() {
       : [...current, mission]);
   }, []);
 
+  const openCatRescue = useCallback((currentGame: RescueGameState) => {
+    const pending = currentGame.robots.buddy.pendingAction;
+    if (!pending || pending.incidentId !== "cat_trapped" || pending.actionId !== "rescue_cat") return;
+    catRescueAttemptRef.current += 1;
+    setActionPopupOpen(false);
+    closeNpcSpeech();
+    setCatRescue({
+      pendingAction: { incidentId: "cat_trapped", actionId: "rescue_cat" },
+      seed: currentGame.seed + catRescueAttemptRef.current * 7_919 + Math.floor(Math.random() * 10_000),
+    });
+  }, [closeNpcSpeech]);
+
   useEffect(() => {
-    if (screen !== "play" || paused || showHelp || safetyQuiz || dialogue || arrivedMissionQueue.length === 0) return;
+    if (screen !== "play" || paused || showHelp || safetyQuiz || catRescue || dialogue || arrivedMissionQueue.length === 0) return;
     const mission = arrivedMissionQueue[0];
     setArrivedMissionQueue((current) => current.slice(1));
-    openSafetyQuiz(mission.incidentId, mission.actionId, game);
-  }, [arrivedMissionQueue, dialogue, game, openSafetyQuiz, paused, safetyQuiz, screen, showHelp]);
+    if (mission.incidentId === "cat_trapped" && mission.actionId === "rescue_cat") openCatRescue(game);
+    else openSafetyQuiz(mission.incidentId, mission.actionId, game);
+  }, [arrivedMissionQueue, catRescue, dialogue, game, openCatRescue, openSafetyQuiz, paused, safetyQuiz, screen, showHelp]);
 
   const requestAction = useCallback((actionId: ActionId) => {
     const incidentId = game.selectedIncidentId;
@@ -536,6 +571,17 @@ export default function Home() {
       playSound("resolve");
     }, 750);
   }, [playSound, safetyQuiz]);
+
+  const finishCatRescue = useCallback((caught: boolean) => {
+    setGame((current) => {
+      const result = caught ? resolveCatRescueMinigame(current) : failCatRescueMinigame(current);
+      if (!result.ok) setToast(result.error ?? "고양이 구조 결과를 반영할 수 없습니다.");
+      return result.state;
+    });
+    setCatRescue(null);
+    playSound(caught ? "resolve" : "failure");
+    setToast(caught ? "쿠션 캐치 성공! 고양이를 안전하게 구조했습니다." : "쿠션을 놓쳤습니다. 고양이 구조에 다시 도전하세요.");
+  }, [playSound]);
 
   const toggleSound = useCallback(() => {
     const next = !soundOn;
@@ -595,6 +641,7 @@ export default function Home() {
     if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
     setDialogue(null);
     setSafetyQuiz(null);
+    setCatRescue(null);
     setArrivedMissionQueue([]);
     setNpcSpeech(null);
     setActionPopupOpen(false);
@@ -605,13 +652,13 @@ export default function Home() {
   }, [getAudio, playSound, screen]);
 
   const beginMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || paused || dialogue || safetyQuiz || showHelp) return;
+    if (event.button !== 0 || paused || dialogue || safetyQuiz || catRescue || showHelp) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     mapDragRef.current = { pointerId: event.pointerId, startClientX: event.clientX, startOffset: mapPanX, renderedWidth: bounds.width };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
     setMapDragging(true);
-  }, [dialogue, mapPanX, paused, safetyQuiz, showHelp]);
+  }, [catRescue, dialogue, mapPanX, paused, safetyQuiz, showHelp]);
 
   const moveMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = mapDragRef.current;
@@ -675,6 +722,7 @@ export default function Home() {
         {game.comboBanner && screen === "play" && <div className="combo-banner"><small>PERFECT COMBO</small><strong>{game.comboBanner}</strong><span>+150</span></div>}
         {dialogue && screen === "play" && <DialogueModal view={dialogue} incidentPosition={stageMap.incidentPositions[dialogue.pendingAction.incidentId]} mapPanX={mapPanX} onChoose={chooseDialogue} />}
         {safetyQuiz && screen === "play" && <SafetyQuizModal view={safetyQuiz} onAnswer={answerSafetyQuiz} />}
+        {catRescue && screen === "play" && <CatRescueMinigameModal view={catRescue} onOutcome={finishCatRescue} onWarning={() => playSound("wave")} />}
         {screen === "play" && (
           <>
             <div
@@ -701,7 +749,7 @@ export default function Home() {
         )}
         {showHelp && (
           <Modal title="클릭 구조 매뉴얼" onClose={closeHelp} dismissible={false}>
-            <ol className="how-to-list"><li><b>1</b><span>지도 빈 공간을 좌우로 드래그해 가려진 지역을 살펴봅니다.</span></li><li><b>2</b><span>주민 머리 위 말풍선 아이콘을 클릭하면 AI 대화를 들을 수 있습니다.</span></li><li><b>3</b><span>지도나 왼쪽 목록에서 사고와 구조 로봇의 행동을 선택합니다.</span></li><li><b>4</b><span>로봇이 현장에 도착하면 AI 안전 퀴즈를 맞혀 사고를 해결합니다.</span></li></ol>
+            <ol className="how-to-list"><li><b>1</b><span>지도 빈 공간을 좌우로 드래그해 가려진 지역을 살펴봅니다.</span></li><li><b>2</b><span>주민 머리 위 말풍선 아이콘을 클릭하면 AI 대화를 들을 수 있습니다.</span></li><li><b>3</b><span>지도나 왼쪽 목록에서 사고와 구조 로봇의 행동을 선택합니다.</span></li><li><b>4</b><span>현장 도착 후 AI 안전 퀴즈를 풀고, 고양이 구조에서는 쿠션 캐치 미니게임에 도전합니다.</span></li></ol>
             <PixelButton onClick={confirmHelp}>확인</PixelButton>
           </Modal>
         )}
@@ -960,6 +1008,170 @@ function SafetyQuizModal({ view, onAnswer }: { view: SafetyQuizView; onAnswer: (
   );
 }
 
+function CatRescueMinigameModal({ view, onOutcome, onWarning }: { view: CatRescueView; onOutcome: (caught: boolean) => void; onWarning: () => void }) {
+  const [phase, setPhase] = useState<CatRescuePhase>("roaming");
+  const [catX, setCatX] = useState(() => getRoamingCatX(view.seed, 0));
+  const [catY, setCatY] = useState(31);
+  const [robotX, setRobotX] = useState(50);
+  const phaseRef = useRef<CatRescuePhase>("roaming");
+  const robotXRef = useRef(50);
+  const holdTimerRef = useRef<number | null>(null);
+  const cardRef = useRef<HTMLElement | null>(null);
+
+  const updateRobotX = useCallback((next: number | ((current: number) => number)) => {
+    setRobotX((current) => {
+      const value = clampCatRobotX(typeof next === "function" ? next(current) : next);
+      robotXRef.current = value;
+      return value;
+    });
+  }, []);
+
+  const moveRobot = useCallback((direction: -1 | 1) => {
+    if (phaseRef.current === "success" || phaseRef.current === "failure") return;
+    updateRobotX((current) => current + direction * CAT_ROBOT_STEP);
+  }, [updateRobotX]);
+
+  const stopHolding = useCallback(() => {
+    if (holdTimerRef.current !== null) window.clearInterval(holdTimerRef.current);
+    holdTimerRef.current = null;
+  }, []);
+
+  const startHolding = useCallback((direction: -1 | 1) => {
+    stopHolding();
+    moveRobot(direction);
+    holdTimerRef.current = window.setInterval(() => moveRobot(direction), 85);
+  }, [moveRobot, stopHolding]);
+
+  useEffect(() => {
+    cardRef.current?.focus();
+    phaseRef.current = "roaming";
+    robotXRef.current = 50;
+    setRobotX(50);
+    setPhase("roaming");
+    setCatY(31);
+    const startedAt = performance.now();
+    const roamDuration = getCatRoamDuration(view.seed);
+    const fallX = getRoamingCatX(view.seed, roamDuration);
+    let animationFrame = 0;
+    let outcomeTimer: number | null = null;
+    let warningPlayed = false;
+
+    const setPhaseNow = (next: CatRescuePhase) => {
+      if (phaseRef.current === next) return;
+      phaseRef.current = next;
+      setPhase(next);
+    };
+
+    const animate = (now: number) => {
+      const elapsed = now - startedAt;
+      if (elapsed < roamDuration) {
+        setCatX(getRoamingCatX(view.seed, elapsed));
+      } else if (elapsed < roamDuration + CAT_WARNING_MS) {
+        setCatX(fallX);
+        setPhaseNow("warning");
+        if (!warningPlayed) {
+          warningPlayed = true;
+          onWarning();
+        }
+      } else {
+        setPhaseNow("falling");
+        setCatX(fallX);
+        const progress = Math.min(1, (elapsed - roamDuration - CAT_WARNING_MS) / CAT_FALL_MS);
+        setCatY(getFallingCatY(progress));
+        if (progress >= 1) {
+          const caught = isCatCaught(fallX, robotXRef.current);
+          setPhaseNow(caught ? "success" : "failure");
+          setCatY(caught ? 67 : 83);
+          outcomeTimer = window.setTimeout(() => onOutcome(caught), 1_250);
+          return;
+        }
+      }
+      animationFrame = window.requestAnimationFrame(animate);
+    };
+    animationFrame = window.requestAnimationFrame(animate);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      if (outcomeTimer !== null) window.clearTimeout(outcomeTimer);
+      stopHolding();
+    };
+  }, [onOutcome, onWarning, stopHolding, view.seed]);
+
+  const moveToPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (phaseRef.current === "success" || phaseRef.current === "failure") return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    updateRobotX((event.clientX - bounds.left) / bounds.width * 100);
+  };
+
+  const statusText = phase === "roaming"
+    ? "고양이 아래로 BUDDY를 이동하세요"
+    : phase === "warning"
+      ? "위험! 1초 뒤 고양이가 떨어집니다"
+      : phase === "falling"
+        ? "지금 쿠션으로 받아내세요!"
+        : phase === "success"
+          ? "구조 성공! 고양이를 안전하게 받았습니다"
+          : "구조 실패! 쿠션 위치를 놓쳤습니다";
+
+  return (
+    <div className="modal-backdrop cat-rescue-backdrop" role="presentation">
+      <section
+        ref={cardRef}
+        className={`cat-rescue-card pixel-alert phase-${phase}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cat-rescue-title"
+        tabIndex={0}
+        data-cat-rescue="cat_trapped"
+        data-cat-phase={phase}
+        data-cat-x={catX.toFixed(2)}
+        data-robot-x={robotX.toFixed(2)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            moveRobot(event.key === "ArrowLeft" ? -1 : 1);
+          }
+        }}
+      >
+        <header>
+          <img src={`${ASSET}/ui/icons/pp_ui_icon_incident_cat.png`} alt="" />
+          <span><small>RESCUE MINI GAME · BUDDY 현장 도착</small><h2 id="cat-rescue-title">옥상 고양이 쿠션 캐치</h2></span>
+          <b className={phase}>{phase === "roaming" ? "READY" : phase === "warning" ? "1 SEC" : phase === "falling" ? "CATCH!" : phase.toUpperCase()}</b>
+        </header>
+        <div
+          className="cat-rescue-field"
+          style={{ "--cat-x": catX, "--cat-y": catY, "--robot-x": robotX } as React.CSSProperties}
+          onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); moveToPointer(event); }}
+          onPointerMove={(event) => event.currentTarget.hasPointerCapture(event.pointerId) && moveToPointer(event)}
+          onPointerUp={(event) => event.currentTarget.hasPointerCapture(event.pointerId) && event.currentTarget.releasePointerCapture(event.pointerId)}
+        >
+          <span className={`cat-rescue-drop-guide ${phase === "warning" || phase === "falling" ? "visible" : ""}`} aria-hidden="true" />
+          {phase === "warning" && <span className="cat-rescue-warning" aria-hidden="true">!</span>}
+          <span className={`cat-rescue-cat ${phase}`} aria-hidden="true" />
+          <span className={`cat-rescue-robot ${phase}`} aria-hidden="true"><i /></span>
+          {(phase === "success" || phase === "failure") && <div className={`cat-rescue-result ${phase}`} role="status"><strong>{phase === "success" ? "PERFECT CATCH!" : "MISS!"}</strong><span>{phase === "success" ? "푹신한 쿠션으로 안전하게 구조했어요" : "고양이는 낮은 차양에 착지했어요 · 재도전 필요"}</span></div>}
+        </div>
+        <div className="cat-rescue-command">
+          <button
+            aria-label="BUDDY 왼쪽 이동"
+            onPointerDown={() => startHolding(-1)}
+            onPointerUp={stopHolding}
+            onPointerCancel={stopHolding}
+            onPointerLeave={stopHolding}
+          >◀</button>
+          <p className={phase} aria-live="assertive"><strong>{statusText}</strong><span>아래 구조 구역을 클릭·드래그하거나 좌우 버튼을 누르세요</span></p>
+          <button
+            aria-label="BUDDY 오른쪽 이동"
+            onPointerDown={() => startHolding(1)}
+            onPointerUp={stopHolding}
+            onPointerCancel={stopHolding}
+            onPointerLeave={stopHolding}
+          >▶</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function DialogueModal({ view, incidentPosition, mapPanX, onChoose }: { view: DialogueView; incidentPosition: StagePoint; mapPanX: number; onChoose: (choiceId: string) => void }) {
   const robot = view.definition.speaker === "주민" ? "buddy" : view.definition.speaker.toLowerCase();
   const [baseIncidentX, baseIncidentY] = incidentPosition;
@@ -1016,8 +1228,70 @@ function ResultScreen({ game, onRetry, onTitle }: { game: RescueGameState; onRet
   const success = game.status === "success";
   const grade = getGrade(game);
   const reason = game.finishReason === "timeout" ? "구조 시간이 종료됐어요" : game.finishReason === "village_lost" ? "마을 안전도가 0이 됐어요" : game.finishReason === "abandoned" ? "작전을 종료했습니다" : "구조 작전 완료!";
+  const newsRequest = useMemo(() => buildResultNewsRequest(game), [game]);
+  const [news, setNews] = useState<ResultNewsResponse>(() => fallbackResultNews(newsRequest));
+  const [newsLoading, setNewsLoading] = useState(true);
+  const [newsOpen, setNewsOpen] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    const localFallback = fallbackResultNews(newsRequest);
+    setNews(localFallback);
+    setNewsLoading(true);
+    setNewsOpen(false);
+    const timeout = window.setTimeout(() => controller.abort(), 5_200);
+    void fetch("/api/news", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newsRequest),
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) return localFallback;
+      const data = await response.json() as { source?: unknown };
+      const normalized = normalizeResultNews(data);
+      return normalized && (data.source === "openai" || data.source === "fallback")
+        ? { ...normalized, source: data.source } as ResultNewsResponse
+        : localFallback;
+    }).catch(() => localFallback).then((result) => {
+      if (active) setNews(result);
+    }).finally(() => {
+      window.clearTimeout(timeout);
+      if (active) setNewsLoading(false);
+    });
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
+  }, [newsRequest]);
+
   return (
-    <section className={`result-screen ${success ? "success" : "fail"}`}><img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_result_${success ? "success" : "fail"}_final.webp`} alt="구조 작전 결과" /><div className="result-vignette" /><div className={`result-card ${success ? "pixel-success" : "pixel-alert"}`}><div className="result-copy"><span className="result-kicker">{success ? "MISSION COMPLETE" : "MISSION REPORT"}</span><img className="grade" src={`${ASSET}/ui/pp_ui_grade_${grade.toLowerCase()}.png`} alt={`${grade} 등급`} /><div><h1>{reason}</h1><p>{success ? "결정론 엔진이 모든 구조 기록을 집계했습니다." : "확산 순서와 로봇 조합을 바꿔 다시 도전해보세요."}</p></div></div><div className="result-stats"><ResultStat icon="rescued" label="구조 주민" value={`${game.rescuedResidents}명`} /><ResultStat icon="incident_count" label="해결 사고" value={`${getResolvedCount(game)}/${INCIDENT_IDS.length}`} /><ResultStat icon="village_hp" label="마을 보존" value={`${game.villagePreservation}%`} /><ResultStat icon="command_count" label="발견 콤보" value={`${game.foundCombos.length}/5`} /><ResultStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} /><ResultStat icon="done" label="최대 콤보" value={`×${game.maxCombo}`} /></div><div className="result-score"><small>FINAL SCORE</small><strong>{Math.max(0, game.score).toLocaleString()}</strong></div><div className="result-actions"><PixelButton onClick={onRetry}>다시 출동</PixelButton><PixelButton variant="secondary" onClick={onTitle}>본부로</PixelButton></div></div></section>
+    <section className={`result-screen ${success ? "success" : "fail"}`}>
+      <img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_result_${success ? "success" : "fail"}_final.webp`} alt="구조 작전 결과" />
+      <div className="result-vignette" />
+      <div className={`result-card ${success ? "pixel-success" : "pixel-alert"}`}>
+        <div className="result-copy"><span className="result-kicker">{success ? "MISSION COMPLETE" : "MISSION REPORT"}</span><img className="grade" src={`${ASSET}/ui/pp_ui_grade_${grade.toLowerCase()}.png`} alt={`${grade} 등급`} /><div><h1>{reason}</h1><p>{success ? "결정론 엔진이 모든 구조 기록을 집계했습니다." : "확산 순서와 로봇 조합을 바꿔 다시 도전해보세요."}</p></div></div>
+        <div className="result-stats"><ResultStat icon="rescued" label="구조 주민" value={`${game.rescuedResidents}명`} /><ResultStat icon="incident_count" label="해결 사고" value={`${getResolvedCount(game)}/${INCIDENT_IDS.length}`} /><ResultStat icon="village_hp" label="마을 보존" value={`${game.villagePreservation}%`} /><ResultStat icon="command_count" label="발견 콤보" value={`${game.foundCombos.length}/5`} /><ResultStat icon="timer" label="남은 시간" value={formatGameTime(game.remainingMs)} /><ResultStat icon="done" label="최대 콤보" value={`×${game.maxCombo}`} /></div>
+        <div className="result-score"><small>FINAL SCORE</small><strong>{Math.max(0, game.score).toLocaleString()}</strong></div>
+        <div className="result-actions"><PixelButton variant="secondary" disabled={newsLoading} onClick={() => setNewsOpen(true)}>{newsLoading ? "AI 뉴스 작성 중" : "AI 마을 뉴스"}</PixelButton><PixelButton onClick={onRetry}>다시 출동</PixelButton><PixelButton variant="secondary" onClick={onTitle}>본부로</PixelButton></div>
+      </div>
+      {newsOpen && <ResultNewsModal news={news} request={newsRequest} onClose={() => setNewsOpen(false)} />}
+    </section>
+  );
+}
+
+function ResultNewsModal({ news, request, onClose }: { news: ResultNewsResponse; request: ResultNewsRequest; onClose: () => void }) {
+  const interviewee = NPC_DIALOGUES[request.intervieweeId];
+  return (
+    <div className="modal-backdrop result-news-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <article className="result-news-card pixel-command" role="dialog" aria-modal="true" aria-labelledby="result-news-headline" data-news-source={news.source}>
+        <button className="modal-close" onClick={onClose} aria-label="AI 마을 뉴스 닫기">×</button>
+        <header><span><b>PIXEL VILLAGE NEWS</b><small>구조 작전 특별판</small></span><em className={news.source}>{news.source === "openai" ? "GPT LIVE" : "LOCAL EDITION"}</em></header>
+        <section className="result-news-article"><small>긴급 구조 속보</small><h2 id="result-news-headline">{news.headline}</h2><p>{news.article}</p></section>
+        <section className="result-news-interview">
+          <span className="result-news-portrait" style={{ backgroundImage: `url(${ASSET}/characters/npcs/pp_char_npc_${interviewee.spriteId}_idle.png)` }} aria-hidden="true" />
+          <div><small>현장 주민 인터뷰</small><strong>{interviewee.name} · {interviewee.role}</strong><blockquote>“{news.interviewQuote}”</blockquote></div>
+        </section>
+        <footer><span>마을 보존 {request.villagePreservation}%</span><span>구조 주민 {request.rescuedResidents}명</span><span>해결 사고 {request.resolvedIncidents.length}건</span></footer>
+      </article>
+    </div>
   );
 }
 

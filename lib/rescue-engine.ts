@@ -398,6 +398,40 @@ export function resolveActionWithSafetyQuiz(state: RescueGameState, robotId: Rob
   return { state: next, ok: true };
 }
 
+export function resolveCatRescueMinigame(state: RescueGameState): SafetyQuizResolutionResult {
+  const pending = state.robots.buddy.pendingAction;
+  if (!pending || pending.incidentId !== "cat_trapped" || pending.actionId !== "rescue_cat") {
+    return { state, ok: false, error: "현장 대기 중인 고양이 구조 임무를 찾을 수 없습니다." };
+  }
+  const next = cloneState(state);
+  appendLog(next, "쿠션 캐치 성공 · 옥상 고양이 구조", "success");
+  completeAction(next, "buddy");
+  return { state: next, ok: true };
+}
+
+export function failCatRescueMinigame(state: RescueGameState): SafetyQuizResolutionResult {
+  const robot = state.robots.buddy;
+  const pending = robot.pendingAction;
+  if (!pending || pending.incidentId !== "cat_trapped" || pending.actionId !== "rescue_cat") {
+    return { state, ok: false, error: "현장 대기 중인 고양이 구조 임무를 찾을 수 없습니다." };
+  }
+  const next = cloneState(state);
+  const nextRobot = next.robots.buddy;
+  next.score -= 40;
+  appendLog(next, "쿠션 위치를 놓쳤습니다 · 고양이 구조 재시도 필요", "warning");
+  next.robots.buddy = {
+    ...nextRobot,
+    status: "idle",
+    currentNodeId: INCIDENTS.cat_trapped.nodeId,
+    targetNodeId: undefined,
+    currentAction: undefined,
+    remainingActionMs: undefined,
+    pendingAction: undefined,
+    energy: Math.max(0, nextRobot.energy - 4),
+  };
+  return { state: next, ok: true };
+}
+
 function allIncidentsResolved(state: RescueGameState): boolean {
   return INCIDENT_IDS.every((id) => isResolvedStatus(state.incidents[id].status));
 }

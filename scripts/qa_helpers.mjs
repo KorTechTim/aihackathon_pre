@@ -33,7 +33,7 @@ export async function fulfillQuiz(route, source = "fallback") {
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
-      question: `${request.incidentLabel} 현장에서 가장 안전한 행동은 무엇일까요?`,
+      question: `${request.incidentLabel}의 ${request.actionLabel} 단계에서 가장 안전한 행동은 무엇일까요?`,
       options: [
         { id: "a", label: "보호 장비 없이 바로 접근한다" },
         { id: "b", label: "주변을 통제하고 안전 절차에 따라 대응한다" },
@@ -43,6 +43,22 @@ export async function fulfillQuiz(route, source = "fallback") {
       explanation: "주변 접근을 통제하고 상황에 맞는 안전 절차를 지키는 것이 우선입니다.",
       source,
       requestId: "qa-quiz-request",
+      ...(source === "fallback" ? { degradedReason: "OCI_UNAVAILABLE" } : {}),
+    }),
+  });
+}
+
+export async function fulfillNews(route, source = "fallback") {
+  const request = route.request().postDataJSON();
+  await route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      headline: `구조 로봇 협동으로 마을 사고 ${request.resolvedIncidents.length}건 해결`,
+      article: `구조대는 주민 ${request.rescuedResidents}명을 안전하게 대피시키고 마을 보존율 ${request.villagePreservation}%를 지켰다. 현장 기록을 바탕으로 후속 안전 점검도 시작됐다.`,
+      interviewQuote: "구조대가 끝까지 주민들을 살펴줘서 모두 안심할 수 있었어요.",
+      source,
+      requestId: "qa-news-request",
       ...(source === "fallback" ? { degradedReason: "OCI_UNAVAILABLE" } : {}),
     }),
   });
@@ -59,6 +75,19 @@ export async function performAction(page, { incidentId, robot, actionName, actio
   await page.getByRole("button", { name: new RegExp(`${robot} 초상화 ${robot}`) }).click();
   await page.getByRole("button", { name: new RegExp(`^${actionName}`) }).click();
   if (dialogueChoice) await page.getByRole("button", { name: dialogueChoice }).click();
+  if (incidentId === "cat_trapped" && actionId === "rescue_cat") {
+    const miniGame = page.locator('[data-cat-rescue="cat_trapped"]');
+    await miniGame.waitFor({ state: "visible", timeout: 12_000 });
+    await page.waitForFunction(() => document.querySelector('[data-cat-rescue="cat_trapped"]')?.getAttribute("data-cat-phase") === "warning", undefined, { timeout: 8_000 });
+    const field = await miniGame.locator(".cat-rescue-field").boundingBox();
+    const catX = Number(await miniGame.getAttribute("data-cat-x"));
+    if (!field || !Number.isFinite(catX)) throw new Error("cat rescue field position is unavailable");
+    await page.mouse.click(field.x + field.width * catX / 100, field.y + field.height * .82);
+    await page.waitForFunction(() => document.querySelector('[data-cat-rescue="cat_trapped"]')?.getAttribute("data-cat-phase") === "success", undefined, { timeout: 3_000 });
+    await miniGame.waitFor({ state: "hidden", timeout: 3_000 });
+    await waitForDebug(page, () => window.__PIXEL_PANIC_DEBUG__?.game.incidents.cat_trapped.status === "resolved", undefined, 3_000);
+    return;
+  }
   const quiz = page.locator(`[data-safety-quiz="${incidentId}"]`);
   await quiz.waitFor({ state: "visible", timeout: 8_000 });
   await quiz.locator('[data-quiz-option="b"]').click();

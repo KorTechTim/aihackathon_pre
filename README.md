@@ -15,14 +15,16 @@
 - 지도 주민을 클릭하면 이름·직업·성격과 현재 재난 상황을 반영한 AI 말풍선 대사가 생성됩니다.
 - 구조 로봇을 선택하면 해당 사고에서 가능한 행동이 지도 위 명령 팝업으로 열립니다.
 - 로봇이 실제 사고 지점에 도착하면 해당 재난에 맞는 AI 안전 상식 3지선다 퀴즈가 열리고, 정답을 맞혀야 현장이 해결됩니다.
+- 옥상 고양이 사고에서는 BUDDY를 좌우로 움직여 1초 뒤 추락하는 고양이를 쿠션으로 받는 전용 팝업 미니게임이 열립니다. 놓치면 사고가 남아 다시 도전할 수 있습니다.
 - 3분 30초 동안 화재, 침수, 복합 재난의 3개 웨이브가 진행됩니다.
 - 실제 판정에 사용하는 사고 10개와 연쇄 사고 체인 2개가 있습니다.
 - 행동 순서로 판정하는 로봇 콤보 5개와 선택형 대화 이벤트 4개가 있습니다.
 - 타이틀과 구조 작전에 서로 다른 오리지널 8비트 BGM을 사용하고 선택·출동·해결·콤보·결과 효과음을 Web Audio로 실시간 합성합니다.
 - 게임 엔진이 사고 확산, 콤보, 점수, 등급을 결정론적으로 계산합니다.
-- GPT-5.6은 NPC·로봇 대사와 현장별 안전 상식 퀴즈를 생성하며 실패하면 즉시 로컬 정적 대사·문제를 사용합니다.
+- 결과 화면에서는 실제 작전 기록을 바탕으로 AI 마을 뉴스와 주민 인터뷰를 발행합니다.
+- GPT-5.6은 NPC·로봇 대사, 현장별 안전 상식 퀴즈와 결과 뉴스를 생성하며 실패하면 즉시 로컬 콘텐츠를 사용합니다.
 
-기본 조작은 `사고 선택 → 로봇 선택 → 행동 선택 → 현장 도착 → 안전 퀴즈 정답`입니다. 선행 조치로 확산을 막고, 아래 대표 순서처럼 역할을 이어 붙이면 보너스 콤보를 발견할 수 있습니다.
+기본 조작은 `사고 선택 → 로봇 선택 → 행동 선택 → 현장 도착 → 안전 퀴즈 또는 구조 미니게임`입니다. 선행 조치로 확산을 막고, 아래 대표 순서처럼 역할을 이어 붙이면 보너스 콤보를 발견할 수 있습니다.
 
 ```text
 FIX 전력 차단 → BUDDY 주민 대피 → FIX 가스 차단 → AQUA 화재 진압
@@ -42,16 +44,18 @@ BUDDY 부품 운반 → FIX 발전 시설 복구 → AQUA 수위 감소 → FIX 
        │
        └─ 주민 말풍선·선택형 대사 /api/dialogue
           현장 안전 상식 퀴즈 /api/quiz
+          결과 기사·주민 인터뷰 /api/news
           → Vercel Next.js 서버 Route
-          → OCI Ubuntu VM:8080 /api/dialogue · /api/quiz
+          → OCI Ubuntu VM:8080 /api/dialogue · /api/quiz · /api/news
           → OpenAI Responses API (gpt-5.6-luna)
 ```
 
 - Vercel Route는 서버 전용 Bearer 토큰으로 OCI Fastify API를 호출합니다.
 - OpenAI API 키는 OCI VM의 저장소 밖 환경파일에만 둡니다.
-- OCI/OpenAI/네트워크/429/5xx/잘못된 응답/5초 timeout은 상황별 정적 대사 또는 안전 문제로 폴백합니다.
+- OCI/OpenAI/네트워크/429/5xx/잘못된 응답/5초 timeout은 상황별 정적 대사·안전 문제·결과 기사로 폴백합니다.
 - NPC 대사는 캐릭터 설정과 현재 게임 사실만 사용합니다. 선택지는 기존 대화 이벤트에만 미리 정의돼 있으며 LLM은 선택지, 규칙, 점수, 승패를 만들지 않습니다.
 - 퀴즈는 현재 사고·행동·로봇·위험도만 사용한 초급 3지선다 구조화 출력입니다. 정답 전에는 엔진이 임무를 완료하지 않으며 정답 판정과 사고 해결은 클라이언트의 결정론 규칙이 수행합니다.
+- 결과 뉴스는 결정론 엔진이 확정한 승패·등급·점수·보존율·구조 인원·해결 사고·콤보만 전달합니다. LLM은 이 사실을 바꾸지 않고 제목, 기사와 지정 주민의 인터뷰 문장만 작성합니다.
 - 기존 `/api/plan`과 OCI `/v1/plan`은 이전 데모 호환용으로 남아 있지만 현재 게임 UI는 호출하지 않습니다.
 - Vercel은 `main`을 자동 배포하고 OCI는 승인된 `main` 커밋을 수동 반영합니다.
 
@@ -75,7 +79,7 @@ cd aihackathon_pre
 npm run dev
 ```
 
-브라우저에서 `http://localhost:3000`을 엽니다. OCI 환경변수가 없더라도 `/api/dialogue`와 `/api/quiz`가 로컬 대사·문제를 반환하므로 첫 화면부터 결과 화면까지 플레이할 수 있습니다.
+브라우저에서 `http://localhost:3000`을 엽니다. OCI 환경변수가 없더라도 `/api/dialogue`, `/api/quiz`, `/api/news`가 로컬 대사·문제·기사를 반환하므로 첫 화면부터 결과 화면까지 플레이할 수 있습니다.
 
 OCI backend만 개발할 때는 저장소 밖 환경파일에 테스트 공유 토큰을 설정한 뒤 실행합니다.
 
@@ -107,14 +111,14 @@ npm run policy:verify   # 경로·비밀정보·버전 정책
 npm run assets:verify   # 그래픽 규격·예산·매니페스트
 npm run typecheck       # 프런트와 backend TypeScript
 npm run test:unit       # 게임 엔진과 Vercel 프록시
-npm run test:backend    # 인증/health/dialogue/quiz/fallback/rate limit
+npm run test:backend    # 인증/health/dialogue/quiz/news/fallback/rate limit
 npm run build:test      # QA debug snapshot 포함 production build
 npm run qa:full         # 클릭 완주/fallback/반응형/종료 테스트
 npm run ci              # 로컬 검증 전체
 npm run ci:docker       # backend 이미지와 컨테이너 health
 ```
 
-브라우저 QA는 same-origin `/api/dialogue`와 `/api/quiz`를 mock해 유료 OpenAI 요청을 실행하지 않습니다. 실제 VM 점검용 `qa:oci-api`는 인증 정보가 보안 환경변수로 주입된 관리 환경에서만 실행합니다.
+브라우저 QA는 same-origin `/api/dialogue`, `/api/quiz`, `/api/news`를 mock해 유료 OpenAI 요청을 실행하지 않습니다. 실제 VM 점검용 `qa:oci-api`는 인증 정보가 보안 환경변수로 주입된 관리 환경에서만 실행합니다.
 
 ## 주요 문서
 
