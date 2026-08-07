@@ -11,6 +11,7 @@ const config: AppConfig = {
   rateLimitMax: 10, rateLimitWindowMs: 60_000, rateLimitBurst: 3, planCacheTtlMs: 60_000, planCacheMax: 100,
 };
 const input: NewsInput = {
+  edition: "final", completedWave: null,
   status: "success", finishReason: "completed", grade: "S", score: 2300, villagePreservation: 94, rescuedResidents: 9,
   resolvedIncidents: ["전기 합선", "빵집 화재", "가스 폭발 위험", "발전소 침수", "하천 범람", "다리 파손", "서쪽 주민 고립", "민가 확산 화재", "옥상 고양이 고립", "동쪽 주민 고립", "광장 폭탄 위협"],
   unresolvedIncidents: [], comboLabels: ["POWER CUT → SPLASH"], maxCombo: 1, remainingSeconds: 24, catRescued: true,
@@ -29,6 +30,7 @@ test("게임 기록을 구조화 뉴스 프롬프트에 전달한다", async () 
   const result = await createOpenAINewsWriter(config, client).write(input);
   assert.equal(result.source, "openai");
   assert.match(String(captured.instructions), /마을 신문 기자/);
+  assert.match(String(captured.instructions), /edition이 stage/);
   assert.match(String(captured.input), /구조 자원봉사자/);
   assert.equal((captured.text as { format: { type: string } }).format.type, "json_schema");
   assert.equal(captured.store, false);

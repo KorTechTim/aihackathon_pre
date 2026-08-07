@@ -132,13 +132,17 @@ assert.equal(await quiz.getAttribute("data-quiz-difficulty"), "easy");
 assert.deepEqual(quizRequests.map(({ quizSequence, difficulty, excludedQuestions }) => ({ quizSequence, difficulty, excludedQuestions })), [
   { quizSequence: 1, difficulty: "easy", excludedQuestions: [] },
 ]);
-assert.match(await quiz.locator(".safety-quiz-question").innerText(), /빵집 화재/);
+const firstSafetyQuestion = await quiz.locator(".safety-quiz-question").innerText();
+assert.match(firstSafetyQuestion, /빵집 화재/);
+assert.equal(["first_response", "hidden_hazard", "safe_sequence", "protective_setup", "evacuation", "communication", "post_check", "priority"].includes(quizRequests[0].questionFocus), true);
+assert.equal(Number.isInteger(quizRequests[0].variationSeed), true);
 await quiz.locator('[data-quiz-option="a"]').click();
 assert.equal(await quiz.getAttribute("data-quiz-status"), "wrong");
 assert.equal((await page.evaluate(() => window.__PIXEL_PANIC_DEBUG__?.game.incidents.bakery_fire.completedActions.includes("evacuate"))) ?? false, false);
 await quiz.locator('[data-quiz-option="b"]').click();
 await quiz.waitFor({ state: "hidden" });
 await page.waitForFunction(() => window.__PIXEL_PANIC_DEBUG__?.game.incidents.bakery_fire.completedActions.includes("evacuate"));
+await page.waitForFunction((question) => window.__PIXEL_PANIC_DEBUG__?.quizHistory().questions.includes(question), firstSafetyQuestion);
 
 const manifestResponse = await page.request.get(`${baseUrl}/assets/pixel-panic/manifests/asset-manifest.json`);
 assert.equal(manifestResponse.ok(), true);
@@ -156,6 +160,12 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 1024, height: 576
 }
 await page.setViewportSize({ width: 390, height: 844 });
 await page.getByText("기기를 가로로 돌려주세요").waitFor();
+await page.setViewportSize({ width: 1280, height: 720 });
+await page.goto(`${baseUrl}/?screen=play&skipBriefing=1`, { waitUntil: "networkidle" });
+const persistedQuizHistory = await page.evaluate(() => window.__PIXEL_PANIC_DEBUG__?.quizHistory());
+assert.equal(persistedQuizHistory?.sequence, 1);
+assert.equal(persistedQuizHistory?.questions.includes(firstSafetyQuestion), true);
+
 const waveThreePage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await waveThreePage.goto(`${baseUrl}/?screen=play&skipBriefing=1&qaAll=1`, { waitUntil: "networkidle" });
 await waveThreePage.locator('.game-screen[data-stage-map="highland"]').waitFor();
@@ -258,6 +268,40 @@ await bombGame.waitFor({ state: "hidden", timeout: 3_000 });
 await bombPage.waitForFunction(() => window.__PIXEL_PANIC_DEBUG__?.game.incidents.suspicious_bomb.status === "resolved");
 await bombPage.close();
 
+const stagePage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const stageErrors = collectPageErrors(stagePage);
+const stageNewsRequests = [];
+await stagePage.route("**/api/news", (route) => {
+  stageNewsRequests.push(route.request().postDataJSON());
+  return fulfillNews(route, "openai");
+});
+await stagePage.goto(`${baseUrl}/?screen=play&skipBriefing=1`, { waitUntil: "networkidle" });
+await stagePage.evaluate(() => {
+  const game = window.__PIXEL_PANIC_DEBUG__?.game;
+  if (!game) throw new Error("debug game state is unavailable");
+  for (const id of ["electrical_short", "bakery_fire", "gas_risk"]) {
+    game.incidents[id].status = "resolved";
+    game.incidents[id].progress = 100;
+  }
+});
+const stageNews = stagePage.locator('[data-stage-news="1"]');
+await stageNews.waitFor({ state: "visible", timeout: 3_000 });
+await stagePage.waitForFunction(() => document.querySelector('[data-stage-news="1"]')?.getAttribute("data-news-source") === "openai");
+assert.equal(stageNewsRequests.length, 1);
+assert.equal(stageNewsRequests[0].edition, "stage");
+assert.equal(stageNewsRequests[0].completedWave, 1);
+const stageNewsBounds = await stageNews.boundingBox();
+assert.equal(Boolean(stageNewsBounds && stageNewsBounds.x >= 0 && stageNewsBounds.y >= 0 && stageNewsBounds.x + stageNewsBounds.width <= 1280 && stageNewsBounds.y + stageNewsBounds.height <= 720), true);
+await stagePage.screenshot({ path: "/tmp/pixel-panic-wave-news.png" });
+assert.equal(await stagePage.locator('.game-screen').getAttribute('data-wave'), "1");
+const elapsedBeforeStage = await stagePage.evaluate(() => window.__PIXEL_PANIC_DEBUG__?.game.elapsedMs);
+await stagePage.waitForTimeout(500);
+assert.equal(await stagePage.evaluate(() => window.__PIXEL_PANIC_DEBUG__?.game.elapsedMs), elapsedBeforeStage, "stage news must pause the game timer");
+await stagePage.getByRole("button", { name: /WAVE 2.*폭우와 침수 출동/ }).click();
+await stagePage.locator('.game-screen[data-wave="2"][data-stage-map="harbor"]').waitFor();
+assert.equal(await stagePage.evaluate(() => window.__PIXEL_PANIC_DEBUG__?.game.incidents.power_flood.status), "active");
+await stagePage.close();
+
 const resultPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const resultErrors = collectPageErrors(resultPage);
 const newsRequests = [];
@@ -284,6 +328,6 @@ await resultPage.screenshot({ path: "/tmp/pixel-panic-ai-news.png" });
 await resultPage.getByRole("button", { name: "AI 마을 뉴스 닫기" }).click();
 await resultPage.close();
 
-assert.deepEqual([...titleErrors, ...errors, ...catErrors, ...bombErrors, ...resultErrors], []);
+assert.deepEqual([...titleErrors, ...errors, ...catErrors, ...bombErrors, ...stageErrors, ...resultErrors], []);
 await browser.close();
-console.log("Responsive smoke PASSED: rooftop cat catch and AI-radio bomb-defusal mini games, full-height map, arrival-triggered AI safety quiz, AI result news/interview, step-by-step road routes and exact robot targets, title/mission audio, 9 rotating maps, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");
+console.log("Responsive smoke PASSED: immediate wave-news transition, rooftop cat catch and AI-radio bomb-defusal mini games, full-height map, arrival-triggered AI safety quiz, AI result news/interview, step-by-step road routes and exact robot targets, title/mission audio, 9 rotating maps, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");

@@ -15,6 +15,8 @@ const body = {
   severity: 2,
   quizSequence: 1,
   difficulty: "easy",
+  questionFocus: "first_response",
+  variationSeed: 7731,
   excludedQuestions: [],
   language: "ko",
 } as const;

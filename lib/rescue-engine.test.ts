@@ -6,6 +6,8 @@ import {
   INCIDENTS,
   INCIDENT_IDS,
   advanceGame,
+  advanceToNextWave,
+  canAdvanceToNextWave,
   createInitialGame,
   failBombDefusalMinigame,
   failCatRescueMinigame,
@@ -39,6 +41,22 @@ test("초기 상태는 고정 시드와 3분 30초 타이머를 사용한다", (
   assert.equal(first.remainingMs, 210_000);
   assert.equal(first.incidents.electrical_short.status, "active");
   assert.equal(first.incidents.bakery_fire.status, "warning");
+});
+
+test("현재 웨이브 재난을 모두 해결하면 타이머를 기다리지 않고 다음 웨이브를 연다", () => {
+  const state = skipBriefing(createInitialGame());
+  state.incidents.electrical_short.status = "resolved";
+  state.incidents.bakery_fire.status = "resolved";
+  state.incidents.gas_risk.status = "resolved";
+  assert.equal(state.elapsedMs < 65_000, true);
+  assert.equal(canAdvanceToNextWave(state), true);
+
+  const next = advanceToNextWave(state);
+  assert.equal(next.wave, 2);
+  assert.equal(next.elapsedMs, state.elapsedMs, "다음 스테이지 전환이 남은 시간을 차감하지 않는다");
+  assert.equal(next.briefingMs, 2_500);
+  assert.equal(next.incidents.power_flood.status, "active");
+  assert.equal(next.selectedIncidentId, "power_flood");
 });
 
 test("사고 핀 좌표는 실제 마을 시설 위치에 고정된다", () => {

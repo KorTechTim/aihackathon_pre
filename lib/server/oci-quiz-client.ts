@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { ACTION_IDS, INCIDENT_IDS, ROBOT_IDS } from "../rescue-engine";
 import {
   MAX_EXCLUDED_QUIZ_QUESTIONS,
+  MAX_SAFETY_QUIZ_SEQUENCE,
   SAFETY_QUIZ_DIFFICULTIES,
+  SAFETY_QUIZ_FOCUSES,
   fallbackSafetyQuiz,
   isSafetyQuizQuestionExcluded,
   normalizeSafetyQuiz,
@@ -31,8 +33,10 @@ function isQuizRequest(value: unknown): value is SafetyQuizRequest {
     && ROBOT_IDS.includes(input.robotId as SafetyQuizRequest["robotId"])
     && [1, 2, 3].includes(input.wave ?? 0)
     && Number.isInteger(input.severity) && (input.severity ?? 0) >= 1 && (input.severity ?? 0) <= 3
-    && Number.isInteger(input.quizSequence) && (input.quizSequence ?? 0) >= 1 && (input.quizSequence ?? 0) <= MAX_EXCLUDED_QUIZ_QUESTIONS + 1
+    && Number.isInteger(input.quizSequence) && (input.quizSequence ?? 0) >= 1 && (input.quizSequence ?? 0) <= MAX_SAFETY_QUIZ_SEQUENCE
     && SAFETY_QUIZ_DIFFICULTIES.includes(input.difficulty as SafetyQuizRequest["difficulty"])
+    && SAFETY_QUIZ_FOCUSES.includes(input.questionFocus as SafetyQuizRequest["questionFocus"])
+    && Number.isInteger(input.variationSeed) && (input.variationSeed ?? -1) >= 0 && (input.variationSeed ?? 2_147_483_648) <= 2_147_483_647
     && Array.isArray(input.excludedQuestions) && input.excludedQuestions.length <= MAX_EXCLUDED_QUIZ_QUESTIONS
     && input.excludedQuestions.every((question) => typeof question === "string" && question.length >= 10 && question.length <= 120)
     && input.language === "ko";
@@ -57,6 +61,8 @@ export async function handleQuizProxyRequest(request: Request, options: QuizProx
     excludedQuestions: input.excludedQuestions,
     degradedReason: reason,
     quizSequence: input.quizSequence,
+    questionFocus: input.questionFocus,
+    variationSeed: input.variationSeed,
   }));
   if (!config.backendUrl || !config.backendToken) return fallback("OCI_NOT_CONFIGURED");
 

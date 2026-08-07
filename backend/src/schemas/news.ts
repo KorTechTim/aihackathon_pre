@@ -11,6 +11,8 @@ export const NEWS_INTERVIEWEES = {
 export const NEWS_INTERVIEWEE_IDS = Object.keys(NEWS_INTERVIEWEES) as Array<keyof typeof NEWS_INTERVIEWEES>;
 
 export type NewsInput = {
+  edition: "stage" | "final";
+  completedWave: 1 | 2 | null;
   status: "success" | "failure";
   finishReason: (typeof NEWS_FINISH_REASONS)[number];
   grade: (typeof NEWS_GRADES)[number];
@@ -72,6 +74,17 @@ export function isNewsIntervieweeValid(input: NewsInput): boolean {
 }
 
 export function fallbackNews(input: NewsInput, degradedReason: NonNullable<NewsResult["degradedReason"]>): NewsResult {
+  if (input.edition === "stage" && input.completedWave) {
+    const waveName = input.completedWave === 1 ? "화재 기초" : "폭우와 침수";
+    const waveIncidentCount = input.completedWave === 1 ? 3 : 4;
+    return {
+      headline: `${waveName} 현장 재난 ${waveIncidentCount}건 해결`,
+      article: `구조대가 WAVE ${input.completedWave} 현장을 모두 안정시키고 마을 보존율 ${input.villagePreservation}%를 지켰다. 본부는 구조 기록을 정리한 뒤 다음 재난 지역으로 즉시 출동할 준비를 마쳤다.`,
+      interviewQuote: "구조 로봇들이 위험한 곳을 차례로 확인해줘서 안심했어요. 다음 지역에서도 모두 무사히 돌아오길 기다릴게요.",
+      source: "fallback",
+      degradedReason,
+    };
+  }
   const success = input.status === "success";
   return {
     headline: success ? `구조 로봇 협동으로 마을 사고 ${input.resolvedIncidents.length}건 해결` : "긴급 구조 작전 종료, 남은 현장 점검 착수",

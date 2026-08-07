@@ -29,7 +29,11 @@ function isResultNewsRequest(value: unknown): value is ResultNewsRequest {
   const resolvedValid = isStringArray(resolvedIncidents, incidentLabels, INCIDENT_IDS.length);
   const unresolvedValid = isStringArray(unresolvedIncidents, incidentLabels, INCIDENT_IDS.length);
   const allIncidentLabels = resolvedValid && unresolvedValid ? [...resolvedIncidents, ...unresolvedIncidents] : [];
-  return ["success", "failure"].includes(input.status ?? "")
+  const editionValid = input.edition === "stage"
+    ? (input.completedWave === 1 || input.completedWave === 2) && input.status === "success"
+    : input.edition === "final" && input.completedWave === null;
+  return editionValid
+    && ["success", "failure"].includes(input.status ?? "")
     && ["completed", "timeout", "village_lost", "abandoned"].includes(input.finishReason ?? "")
     && (input.status === "success" ? input.finishReason === "completed" : input.finishReason !== "completed")
     && ["S", "A", "B", "C"].includes(input.grade ?? "")

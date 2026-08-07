@@ -4,7 +4,9 @@ import {
   buildSafetyQuizRequest,
   fallbackSafetyQuiz,
   FALLBACK_SAFETY_QUIZZES,
+  SAFETY_QUIZ_FOCUSES,
   getSafetyQuizDifficulty,
+  getSafetyQuizFocus,
   isSafetyQuizQuestionExcluded,
   normalizeSafetyQuiz,
 } from "./safety-quiz";
@@ -21,11 +23,11 @@ test("모든 긴급 상황은 정답 하나를 가진 로컬 안전 퀴즈를 �
 
 test("퀴즈 요청에는 진행 순서와 이전 질문에 따른 난이도를 함께 담는다", () => {
   const previous = "이미 출제된 충분히 긴 안전 확인 질문입니다.";
-  const request = buildSafetyQuizRequest(createInitialGame(), "electrical_short", "cut_power", { quizSequence: 4, excludedQuestions: [previous] });
+  const request = buildSafetyQuizRequest(createInitialGame(), "electrical_short", "cut_power", { quizSequence: 4, variationSeed: 123, excludedQuestions: [previous] });
   assert.deepEqual(request, {
     incidentId: "electrical_short", incidentLabel: "전기 합선", incidentType: "electrical",
     actionId: "cut_power", actionLabel: "전력 차단", robotId: "fix", wave: 1, severity: 2,
-    quizSequence: 4, difficulty: "medium", excludedQuestions: [previous], language: "ko",
+    quizSequence: 4, difficulty: "medium", questionFocus: "safe_sequence", variationSeed: 123, excludedQuestions: [previous], language: "ko",
   });
 });
 
@@ -37,11 +39,23 @@ test("문제 순서와 웨이브가 오를수록 난이도가 낮아지지 않�
   assert.equal(getSafetyQuizDifficulty(3, 1), "hard");
 });
 
+test("연속 퀴즈는 여덟 가지 출제 관점을 중복 없이 순환한다", () => {
+  const focuses = Array.from({ length: SAFETY_QUIZ_FOCUSES.length }, (_, index) => getSafetyQuizFocus(index + 1));
+  assert.deepEqual(focuses, SAFETY_QUIZ_FOCUSES);
+  assert.equal(getSafetyQuizFocus(SAFETY_QUIZ_FOCUSES.length + 1), "first_response");
+});
+
 test("공백과 문장 부호만 다른 중복 질문을 거부하고 다른 폴백을 고른다", () => {
   const first = fallbackSafetyQuiz("electrical_short", { actionId: "cut_power", quizSequence: 1 });
   assert.equal(isSafetyQuizQuestionExcluded(` ${first.question.replace(/\?/g, " ? ")} `, [first.question]), true);
   const second = fallbackSafetyQuiz("electrical_short", { actionId: "cut_power", quizSequence: 2, excludedQuestions: [first.question] });
   assert.notEqual(second.question, first.question);
+});
+
+test("일부 표현만 바꾼 유사 질문도 재출제로 판단한다", () => {
+  const previous = "합선된 전선 주변에서 가장 먼저 해야 할 안전 행동은 무엇일까요?";
+  const paraphrased = "합선된 전선 주변에서 현재 가장 먼저 해야 할 안전 행동은 무엇인가요?";
+  assert.equal(isSafetyQuizQuestionExcluded(paraphrased, [previous]), true);
 });
 
 test("한 작전에서 가능한 모든 행동의 로컬 문제도 전부 서로 다르다", () => {

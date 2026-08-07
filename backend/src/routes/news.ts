@@ -7,8 +7,10 @@ import type { NewsWriter } from "../services/openai-news.js";
 
 const bodySchema = {
   type: "object", additionalProperties: false,
-  required: ["status", "finishReason", "grade", "score", "villagePreservation", "rescuedResidents", "resolvedIncidents", "unresolvedIncidents", "comboLabels", "maxCombo", "remainingSeconds", "catRescued", "preventedSpreads", "actionCount", "intervieweeId", "intervieweeName", "intervieweeRole", "intervieweeTraits", "language"],
+  required: ["edition", "completedWave", "status", "finishReason", "grade", "score", "villagePreservation", "rescuedResidents", "resolvedIncidents", "unresolvedIncidents", "comboLabels", "maxCombo", "remainingSeconds", "catRescued", "preventedSpreads", "actionCount", "intervieweeId", "intervieweeName", "intervieweeRole", "intervieweeTraits", "language"],
   properties: {
+    edition: { type: "string", enum: ["stage", "final"] },
+    completedWave: { anyOf: [{ type: "integer", enum: [1, 2] }, { type: "null" }] },
     status: { type: "string", enum: ["success", "failure"] },
     finishReason: { type: "string", enum: [...NEWS_FINISH_REASONS] },
     grade: { type: "string", enum: [...NEWS_GRADES] },
@@ -41,6 +43,9 @@ export function registerNewsRoute(app: FastifyInstance, options: { config: AppCo
     }
     if (request.body.status === "success" ? request.body.finishReason !== "completed" : request.body.finishReason === "completed") {
       return reply.status(400).send({ error: "작전 결과가 올바르지 않습니다.", code: "INVALID_NEWS_OUTCOME", requestId: request.id });
+    }
+    if (request.body.edition === "stage" ? request.body.completedWave === null || request.body.status !== "success" : request.body.completedWave !== null) {
+      return reply.status(400).send({ error: "뉴스 발행 단계가 올바르지 않습니다.", code: "INVALID_NEWS_EDITION", requestId: request.id });
     }
     const rate = limiter.enter(request.ip);
     if (!rate.allowed) {

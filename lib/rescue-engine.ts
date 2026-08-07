@@ -186,6 +186,10 @@ const WAVE_INCIDENTS: Record<1 | 2 | 3, IncidentId[]> = {
   3: ["house_fire", "cat_trapped", "east_residents", "suspicious_bomb"],
 };
 
+export function getWaveIncidentIds(wave: 1 | 2 | 3): readonly IncidentId[] {
+  return WAVE_INCIDENTS[wave];
+}
+
 const RESOLUTION_PATHS: Record<IncidentId, readonly (readonly ActionId[])[]> = {
   electrical_short: [["cut_power"]],
   bakery_fire: [["extinguish"]],
@@ -473,6 +477,27 @@ export function failBombDefusalMinigame(state: RescueGameState): SafetyQuizResol
 
 function allIncidentsResolved(state: RescueGameState): boolean {
   return INCIDENT_IDS.every((id) => isResolvedStatus(state.incidents[id].status));
+}
+
+export function isCurrentWaveResolved(state: RescueGameState): boolean {
+  return WAVE_INCIDENTS[state.wave].every((id) => isResolvedStatus(state.incidents[id].status));
+}
+
+export function canAdvanceToNextWave(state: RescueGameState): boolean {
+  return state.status === "playing"
+    && state.wave < 3
+    && isCurrentWaveResolved(state)
+    && ROBOT_IDS.every((id) => state.robots[id].status === "idle");
+}
+
+export function advanceToNextWave(state: RescueGameState): RescueGameState {
+  if (!canAdvanceToNextWave(state)) return state;
+  const next = cloneState(state);
+  const wave = (next.wave + 1) as 2 | 3;
+  activateWave(next, wave);
+  next.selectedIncidentId = WAVE_INCIDENTS[wave][0];
+  next.selectedRobotId = null;
+  return next;
 }
 
 export function advanceGame(state: RescueGameState, rawDeltaMs: number, timerScale = 1): RescueGameState {

@@ -2,12 +2,12 @@ import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../config.js";
 import { requireBackendAuth } from "../middleware/backend-auth.js";
 import { IpRateLimiter } from "../middleware/rate-limit.js";
-import { MAX_EXCLUDED_QUIZ_QUESTIONS, QUIZ_ACTION_IDS, QUIZ_DIFFICULTIES, QUIZ_INCIDENT_IDS, QUIZ_ROBOT_IDS, type QuizInput } from "../schemas/quiz.js";
+import { MAX_EXCLUDED_QUIZ_QUESTIONS, MAX_QUIZ_SEQUENCE, QUIZ_ACTION_IDS, QUIZ_DIFFICULTIES, QUIZ_FOCUSES, QUIZ_INCIDENT_IDS, QUIZ_ROBOT_IDS, type QuizInput } from "../schemas/quiz.js";
 import type { QuizWriter } from "../services/openai-quiz.js";
 
 const bodySchema = {
   type: "object", additionalProperties: false,
-  required: ["incidentId", "incidentLabel", "incidentType", "actionId", "actionLabel", "robotId", "wave", "severity", "quizSequence", "difficulty", "excludedQuestions", "language"],
+  required: ["incidentId", "incidentLabel", "incidentType", "actionId", "actionLabel", "robotId", "wave", "severity", "quizSequence", "difficulty", "questionFocus", "variationSeed", "excludedQuestions", "language"],
   properties: {
     incidentId: { type: "string", enum: [...QUIZ_INCIDENT_IDS] },
     incidentLabel: { type: "string", minLength: 2, maxLength: 40 },
@@ -17,8 +17,10 @@ const bodySchema = {
     robotId: { type: "string", enum: [...QUIZ_ROBOT_IDS] },
     wave: { type: "integer", minimum: 1, maximum: 3 },
     severity: { type: "integer", minimum: 1, maximum: 3 },
-    quizSequence: { type: "integer", minimum: 1, maximum: MAX_EXCLUDED_QUIZ_QUESTIONS + 1 },
+    quizSequence: { type: "integer", minimum: 1, maximum: MAX_QUIZ_SEQUENCE },
     difficulty: { type: "string", enum: [...QUIZ_DIFFICULTIES] },
+    questionFocus: { type: "string", enum: [...QUIZ_FOCUSES] },
+    variationSeed: { type: "integer", minimum: 0, maximum: 2_147_483_647 },
     excludedQuestions: { type: "array", maxItems: MAX_EXCLUDED_QUIZ_QUESTIONS, items: { type: "string", minLength: 10, maxLength: 120 } },
     language: { type: "string", const: "ko" },
   },

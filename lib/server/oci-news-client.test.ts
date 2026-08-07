@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildResultNewsRequest, fallbackResultNews } from "../result-news";
+import { buildResultNewsRequest, buildStageNewsRequest, fallbackResultNews } from "../result-news";
 import { INCIDENT_IDS, createInitialGame } from "../rescue-engine";
 import { handleNewsProxyRequest } from "./oci-news-client";
 
@@ -42,4 +42,17 @@ test("조작된 인터뷰 대상과 누락된 사고 목록은 OCI 호출 전에
   });
   assert.equal(response.status, 400);
   assert.equal(calls, 0);
+});
+
+test("웨이브 완료 중간 뉴스 요청도 OCI 계약을 통과한다", async () => {
+  const stageGame = createInitialGame();
+  stageGame.incidents.electrical_short.status = "resolved";
+  stageGame.incidents.bakery_fire.status = "resolved";
+  stageGame.incidents.gas_risk.status = "resolved";
+  const stageBody = buildStageNewsRequest(stageGame, 1);
+  const response = await handleNewsProxyRequest(request(stageBody), { config: { timeoutMs: 50 }, createRequestId: () => "stage-news" });
+  const result = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(result.source, "fallback");
+  assert.match(result.headline, /화재 기초/);
 });

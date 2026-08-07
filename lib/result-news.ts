@@ -1,7 +1,9 @@
 import { NPC_DIALOGUES, type NpcDialogueId } from "./npc-dialogue";
-import { COMBOS, INCIDENTS, INCIDENT_IDS, getGrade, getResolvedCount, type RescueGameState } from "./rescue-engine";
+import { COMBOS, INCIDENTS, INCIDENT_IDS, WAVE_LABELS, getGrade, getWaveIncidentIds, type RescueGameState } from "./rescue-engine";
 
 export type ResultNewsRequest = {
+  edition: "stage" | "final";
+  completedWave: 1 | 2 | null;
   status: "success" | "failure";
   finishReason: "completed" | "timeout" | "village_lost" | "abandoned";
   grade: "S" | "A" | "B" | "C";
@@ -35,19 +37,23 @@ export type ResultNewsResponse = ResultNewsContent & {
   requestId?: string;
 };
 
-function chooseInterviewee(game: RescueGameState): NpcDialogueId {
+function chooseInterviewee(game: RescueGameState, completedWave: 1 | 2 | null = null): NpcDialogueId {
+  if (completedWave === 1) return "npc_boram";
+  if (completedWave === 2) return "npc_minsu";
   if (game.status === "success") return game.rescuedResidents >= 7 ? "npc_hana" : "npc_boram";
   if (game.finishReason === "timeout") return "npc_duri";
   if (game.finishReason === "village_lost") return "npc_hana";
   return "npc_minsu";
 }
-export function buildResultNewsRequest(game: RescueGameState): ResultNewsRequest {
-  const intervieweeId = chooseInterviewee(game);
+function buildNewsRequest(game: RescueGameState, edition: ResultNewsRequest["edition"], completedWave: 1 | 2 | null): ResultNewsRequest {
+  const intervieweeId = chooseInterviewee(game, completedWave);
   const interviewee = NPC_DIALOGUES[intervieweeId];
   const resolvedIncidents = INCIDENT_IDS.filter((id) => ["resolved", "contained"].includes(game.incidents[id].status));
   return {
-    status: game.status === "success" ? "success" : "failure",
-    finishReason: game.finishReason ?? (game.status === "success" ? "completed" : "abandoned"),
+    edition,
+    completedWave,
+    status: edition === "stage" || game.status === "success" ? "success" : "failure",
+    finishReason: edition === "stage" ? "completed" : game.finishReason ?? (game.status === "success" ? "completed" : "abandoned"),
     grade: getGrade(game),
     score: Math.max(-5_000, Math.min(100_000, Math.trunc(game.score))),
     villagePreservation: Math.max(0, Math.min(100, Math.trunc(game.villagePreservation))),
@@ -68,6 +74,14 @@ export function buildResultNewsRequest(game: RescueGameState): ResultNewsRequest
   };
 }
 
+export function buildResultNewsRequest(game: RescueGameState): ResultNewsRequest {
+  return buildNewsRequest(game, "final", null);
+}
+
+export function buildStageNewsRequest(game: RescueGameState, completedWave: 1 | 2): ResultNewsRequest {
+  return buildNewsRequest(game, "stage", completedWave);
+}
+
 function cleanText(value: unknown, minimum: number, maximum: number): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -84,6 +98,17 @@ export function normalizeResultNews(value: unknown): ResultNewsContent | null {
 }
 
 export function fallbackResultNews(input: ResultNewsRequest, degradedReason?: string): ResultNewsResponse {
+  if (input.edition === "stage" && input.completedWave) {
+    const stageIncidentLabels = new Set(getWaveIncidentIds(input.completedWave).map((id) => INCIDENTS[id].label));
+    const stageResolvedCount = input.resolvedIncidents.filter((label) => stageIncidentLabels.has(label)).length;
+    return {
+      headline: `${WAVE_LABELS[input.completedWave - 1]} 현장 재난 ${stageResolvedCount}건 해결`,
+      article: `구조대가 WAVE ${input.completedWave} 현장을 모두 안정시키고 마을 보존율 ${input.villagePreservation}%를 지켰다. 본부는 구조 기록을 정리한 뒤 다음 재난 지역으로 즉시 출동할 준비를 마쳤다.`,
+      interviewQuote: `구조 로봇들이 위험한 곳을 차례로 확인해줘서 안심했어요. 다음 지역에서도 모두 무사히 돌아오길 기다릴게요.`,
+      source: "fallback",
+      ...(degradedReason ? { degradedReason } : {}),
+    };
+  }
   const success = input.status === "success";
   const headline = success
     ? `구조 로봇 협동으로 마을 사고 ${input.resolvedIncidents.length}건 해결`

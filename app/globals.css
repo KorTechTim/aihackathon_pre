@@ -227,6 +227,10 @@ button:focus-visible { outline: 4px solid #fff; outline-offset: 3px; }
 .result-news-article { padding: 8px 9px 10px; border-bottom: 2px solid #405b68; }.result-news-article > small { color: #a73846; font-size: 9px; letter-spacing: 2px; }.result-news-article h2 { margin: 7px 0 10px; color: #17283a; font-size: 25px; line-height: 1.25; text-shadow: 1px 1px rgba(255,255,255,.34); word-break: keep-all; }.result-news-article p { margin: 0; color: #2f3d42; font-size: 13px; line-height: 1.65; word-break: keep-all; }
 .result-news-interview { padding: 11px 16px; display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 16px; border: 3px solid #49616a; background: rgba(239, 224, 187, .56); box-shadow: inset 0 0 0 3px rgba(23, 100, 134, .09); }.result-news-portrait { width: 88px; height: 88px; background-color: #172842; background-position: 0 0; background-repeat: no-repeat; background-size: 352px 352px; image-rendering: pixelated; border: 3px solid #176486; box-shadow: 0 5px #283b43; }.result-news-interview > div { display: flex; flex-direction: column; }.result-news-interview small { color: #8b5a08; font-size: 8px; letter-spacing: 1.6px; }.result-news-interview strong { margin-top: 4px; color: #17283a; font-size: 13px; }.result-news-interview blockquote { margin: 8px 0 0; color: #314248; font-size: 12px; line-height: 1.5; }
 .result-news-card > footer { display: flex; align-items: center; justify-content: center; gap: 26px; color: #4f5d60; font-size: 9px; letter-spacing: .5px; }.result-news-card > footer span::before { content: "■"; margin-right: 7px; color: #176486; }
+.stage-news-card { grid-template-rows: 56px 1fr 142px 58px; }
+.stage-news-card > footer { justify-content: space-between; border-top: 2px solid #405b68; padding-top: 8px; }
+.stage-news-card > footer > div { display: flex; gap: 22px; }
+.stage-news-card > footer .pixel-button { min-width: 250px; min-height: 42px; }
 @keyframes news-card-in { from { opacity: 0; transform: translateY(18px) scale(.96); } }
 
 /* Modal and responsive */

@@ -10,7 +10,10 @@ export const SAFETY_QUIZ_OPTION_IDS = ["a", "b", "c"] as const;
 export type SafetyQuizOptionId = (typeof SAFETY_QUIZ_OPTION_IDS)[number];
 export const SAFETY_QUIZ_DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export type SafetyQuizDifficulty = (typeof SAFETY_QUIZ_DIFFICULTIES)[number];
-export const MAX_EXCLUDED_QUIZ_QUESTIONS = 24;
+export const SAFETY_QUIZ_FOCUSES = ["first_response", "hidden_hazard", "safe_sequence", "protective_setup", "evacuation", "communication", "post_check", "priority"] as const;
+export type SafetyQuizFocus = (typeof SAFETY_QUIZ_FOCUSES)[number];
+export const MAX_EXCLUDED_QUIZ_QUESTIONS = 48;
+export const MAX_SAFETY_QUIZ_SEQUENCE = 10_000;
 
 export type SafetyQuizOption = {
   id: SafetyQuizOptionId;
@@ -35,6 +38,8 @@ export type SafetyQuizRequest = {
   severity: number;
   quizSequence: number;
   difficulty: SafetyQuizDifficulty;
+  questionFocus: SafetyQuizFocus;
+  variationSeed: number;
   excludedQuestions: string[];
   language: "ko";
 };
@@ -251,6 +256,76 @@ const FALLBACK_SAFETY_QUIZZES_BY_ACTION: Partial<Record<IncidentId, Partial<Reco
   suspicious_bomb: { defuse_bomb: FALLBACK_SAFETY_QUIZZES.suspicious_bomb },
 };
 
+const SAFETY_QUIZ_FOCUS_LABELS: Record<SafetyQuizFocus, string> = {
+  first_response: "최초 대응",
+  hidden_hazard: "숨은 위험",
+  safe_sequence: "안전 순서",
+  protective_setup: "보호 준비",
+  evacuation: "대피 동선",
+  communication: "현장 보고",
+  post_check: "사후 확인",
+  priority: "우선순위 판단",
+};
+
+export function getSafetyQuizFocus(quizSequence: number, variationSeed = 0): SafetyQuizFocus {
+  const sequence = Math.max(1, Math.trunc(quizSequence));
+  const seed = Math.max(0, Math.trunc(variationSeed));
+  return SAFETY_QUIZ_FOCUSES[(sequence - 1 + seed) % SAFETY_QUIZ_FOCUSES.length];
+}
+
+function focusedFallbackSafetyQuiz(incidentId: IncidentId, actionId: ActionId, focus: SafetyQuizFocus): SafetyQuizContent {
+  const incident = INCIDENTS[incidentId];
+  const action = ACTIONS[actionId];
+  switch (focus) {
+    case "first_response":
+      return FALLBACK_SAFETY_QUIZZES_BY_ACTION[incidentId]?.[actionId] ?? FALLBACK_SAFETY_QUIZZES[incidentId];
+    case "hidden_hazard":
+      return ALTERNATE_FALLBACK_SAFETY_QUIZZES[incidentId];
+    case "safe_sequence":
+      return quiz(
+        `${incident.label} 현장에서 ${action.label}을 시작하기 전 가장 안전한 확인 순서는 무엇일까요?`,
+        ["주변 통제 → 위험 확인 → 안전 확보 후 작업", "작업 시작 → 위험 확인 → 주민 안내", "사진 촬영 → 장비 생략 → 바로 접근"],
+        "a",
+        "작업보다 주변 통제와 위험 확인을 먼저 하고 안전이 확보된 뒤 대응해야 추가 사고를 막을 수 있습니다.",
+      );
+    case "protective_setup":
+      return quiz(
+        `${incident.label}의 ${action.label} 임무 전에 갖춰야 할 보호 원칙은 무엇일까요?`,
+        ["속도를 위해 보호 절차를 생략한다", "현장 위험에 맞는 보호 장비와 안전거리를 확보한다", "주민에게 장비 없이 가까이 오게 한다"],
+        "b",
+        "현장 위험에 맞는 보호 장비와 안전거리를 먼저 확보해야 구조대와 주민 모두를 보호할 수 있습니다.",
+      );
+    case "evacuation":
+      return quiz(
+        `${incident.label} 대응 중 주민 대피 동선을 정할 때 가장 중요한 기준은 무엇일까요?`,
+        ["위험원과 멀고 장애물이 적은 통제된 경로", "현장을 가장 가까이 볼 수 있는 경로", "짐을 다시 가지러 갈 수 있는 경로"],
+        "a",
+        "대피 경로는 위험원에서 멀고 통제 가능하며 장애물이 적어야 주민의 추가 노출을 줄일 수 있습니다.",
+      );
+    case "communication":
+      return quiz(
+        `${incident.label} 현장에서 본부에 우선 보고해야 할 정보 조합은 무엇일까요?`,
+        ["주변 상점 이름과 날씨", "정확한 위치·현재 위험·도움이 필요한 인원", "구조대의 개인 일정"],
+        "b",
+        "정확한 위치와 현재 위험, 보호가 필요한 인원을 함께 알려야 본부가 적절한 지원과 통제를 결정할 수 있습니다.",
+      );
+    case "post_check":
+      return quiz(
+        `${action.label}을 마친 뒤 ${incident.label} 현장을 다시 확인해야 하는 이유는 무엇일까요?`,
+        ["장비 색상을 비교하기 위해서", "남은 위험과 재발 가능성을 확인한 뒤 통제를 해제하기 위해서", "주민을 즉시 현장 안으로 부르기 위해서"],
+        "b",
+        "작업 후에도 남은 위험이나 재발 가능성이 있으므로 재확인 전에는 통제와 안전거리를 유지해야 합니다.",
+      );
+    case "priority":
+      return quiz(
+        `${action.label} 도중 새로운 위험 신호가 나타났다면 가장 먼저 할 판단은 무엇일까요?`,
+        ["계획대로 무조건 작업을 계속한다", "주민에게 직접 확인하게 한다", "작업을 멈추고 거리를 확보한 뒤 본부와 위험을 재평가한다"],
+        "c",
+        "예상하지 못한 위험이 생기면 작업을 멈추고 안전거리를 확보한 뒤 상황을 다시 평가해야 합니다.",
+      );
+  }
+}
+
 function cleanText(value: unknown, maximum: number): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -280,9 +355,35 @@ export function safetyQuizQuestionKey(question: string): string {
   return question.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
+function questionBigrams(question: string): Set<string> {
+  const key = safetyQuizQuestionKey(question);
+  const grams = new Set<string>();
+  for (let index = 0; index < key.length - 1; index += 1) grams.add(key.slice(index, index + 2));
+  return grams;
+}
+
+export function safetyQuizQuestionSimilarity(first: string, second: string): number {
+  const firstKey = safetyQuizQuestionKey(first);
+  const secondKey = safetyQuizQuestionKey(second);
+  if (!firstKey || !secondKey) return 0;
+  if (firstKey === secondKey) return 1;
+  const firstGrams = questionBigrams(firstKey);
+  const secondGrams = questionBigrams(secondKey);
+  if (firstGrams.size === 0 || secondGrams.size === 0) return 0;
+  let overlap = 0;
+  firstGrams.forEach((gram) => { if (secondGrams.has(gram)) overlap += 1; });
+  return overlap * 2 / (firstGrams.size + secondGrams.size);
+}
+
 export function isSafetyQuizQuestionExcluded(question: string, excludedQuestions: readonly string[]): boolean {
   const key = safetyQuizQuestionKey(question);
-  return key.length > 0 && excludedQuestions.some((excluded) => safetyQuizQuestionKey(excluded) === key);
+  return key.length > 0 && excludedQuestions.some((excluded) => {
+    const excludedKey = safetyQuizQuestionKey(excluded);
+    if (excludedKey === key) return true;
+    const shorter = key.length <= excludedKey.length ? key : excludedKey;
+    const longer = key.length > excludedKey.length ? key : excludedKey;
+    return shorter.length >= 12 && longer.includes(shorter) || safetyQuizQuestionSimilarity(key, excludedKey) >= 0.68;
+  });
 }
 
 export function getSafetyQuizDifficulty(wave: 1 | 2 | 3, quizSequence: number): SafetyQuizDifficulty {
@@ -293,6 +394,7 @@ export function getSafetyQuizDifficulty(wave: 1 | 2 | 3, quizSequence: number): 
 
 type SafetyQuizRequestOptions = {
   quizSequence?: number;
+  variationSeed?: number;
   excludedQuestions?: readonly string[];
 };
 
@@ -304,7 +406,8 @@ export function buildSafetyQuizRequest(
 ): SafetyQuizRequest {
   const incident = INCIDENTS[incidentId];
   const action = ACTIONS[actionId];
-  const quizSequence = Math.max(1, Math.trunc(options.quizSequence ?? 1));
+  const quizSequence = Math.min(MAX_SAFETY_QUIZ_SEQUENCE, Math.max(1, Math.trunc(options.quizSequence ?? 1)));
+  const variationSeed = Math.min(2_147_483_647, Math.max(0, Math.trunc(options.variationSeed ?? game.seed + quizSequence * 7_919)));
   const excludedQuestions = (options.excludedQuestions ?? [])
     .map((question) => question.replace(/\s+/g, " ").trim())
     .filter((question) => question.length >= 10 && question.length <= 120)
@@ -320,6 +423,8 @@ export function buildSafetyQuizRequest(
     severity: game.incidents[incidentId].severity,
     quizSequence,
     difficulty: getSafetyQuizDifficulty(game.wave, quizSequence),
+    questionFocus: getSafetyQuizFocus(quizSequence, game.seed),
+    variationSeed,
     excludedQuestions,
     language: "ko",
   };
@@ -330,16 +435,24 @@ type FallbackSafetyQuizOptions = {
   excludedQuestions?: readonly string[];
   degradedReason?: string;
   quizSequence?: number;
+  questionFocus?: SafetyQuizFocus;
+  variationSeed?: number;
 };
 
 export function fallbackSafetyQuiz(incidentId: IncidentId, options: FallbackSafetyQuizOptions = {}): SafetyQuizResponse {
-  const preferred = options.actionId ? FALLBACK_SAFETY_QUIZZES_BY_ACTION[incidentId]?.[options.actionId] : undefined;
-  const candidates = [preferred, FALLBACK_SAFETY_QUIZZES[incidentId], ALTERNATE_FALLBACK_SAFETY_QUIZZES[incidentId]]
+  const actionId = options.actionId ?? INCIDENTS[incidentId].allowedActions[0];
+  const quizSequence = Math.max(1, Math.trunc(options.quizSequence ?? 1));
+  const focus = options.questionFocus ?? getSafetyQuizFocus(quizSequence, options.variationSeed);
+  const focusIndex = SAFETY_QUIZ_FOCUSES.indexOf(focus);
+  const focusedCandidates = SAFETY_QUIZ_FOCUSES.map((_, offset) => SAFETY_QUIZ_FOCUSES[(focusIndex + offset) % SAFETY_QUIZ_FOCUSES.length])
+    .map((candidateFocus) => focusedFallbackSafetyQuiz(incidentId, actionId, candidateFocus));
+  const preferred = FALLBACK_SAFETY_QUIZZES_BY_ACTION[incidentId]?.[actionId];
+  const candidates = [...focusedCandidates, preferred, FALLBACK_SAFETY_QUIZZES[incidentId], ALTERNATE_FALLBACK_SAFETY_QUIZZES[incidentId]]
     .filter((candidate, index, all): candidate is SafetyQuizContent => Boolean(candidate) && all.indexOf(candidate) === index);
   const unused = candidates.find((candidate) => !isSafetyQuizQuestionExcluded(candidate.question, options.excludedQuestions ?? []));
   const selected = unused ?? {
     ...candidates[0],
-    question: `${Math.max(1, Math.trunc(options.quizSequence ?? 1))}단계 ${ACTIONS[options.actionId ?? INCIDENTS[incidentId].allowedActions[0]].label} 안전 확인: ${candidates[0].question}`.slice(0, 120),
+    question: `${SAFETY_QUIZ_FOCUS_LABELS[focus]} ${quizSequence}번 변형 · ${candidates[0].question}`.slice(0, 120),
   };
   return { ...selected, source: "fallback", ...(options.degradedReason ? { degradedReason: options.degradedReason } : {}) };
 }

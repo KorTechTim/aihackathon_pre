@@ -11,12 +11,15 @@ export const QUIZ_ACTION_IDS = [
 export const QUIZ_ROBOT_IDS = ["aqua", "fix", "buddy"] as const;
 export const QUIZ_OPTION_IDS = ["a", "b", "c"] as const;
 export const QUIZ_DIFFICULTIES = ["easy", "medium", "hard"] as const;
-export const MAX_EXCLUDED_QUIZ_QUESTIONS = 24;
+export const QUIZ_FOCUSES = ["first_response", "hidden_hazard", "safe_sequence", "protective_setup", "evacuation", "communication", "post_check", "priority"] as const;
+export const MAX_EXCLUDED_QUIZ_QUESTIONS = 48;
+export const MAX_QUIZ_SEQUENCE = 10_000;
 
 export type QuizIncidentId = (typeof QUIZ_INCIDENT_IDS)[number];
 export type QuizActionId = (typeof QUIZ_ACTION_IDS)[number];
 export type QuizOptionId = (typeof QUIZ_OPTION_IDS)[number];
 export type QuizDifficulty = (typeof QUIZ_DIFFICULTIES)[number];
+export type QuizFocus = (typeof QUIZ_FOCUSES)[number];
 
 export type QuizInput = {
   incidentId: QuizIncidentId;
@@ -29,6 +32,8 @@ export type QuizInput = {
   severity: number;
   quizSequence: number;
   difficulty: QuizDifficulty;
+  questionFocus: QuizFocus;
+  variationSeed: number;
   excludedQuestions: string[];
   language: "ko";
 };
@@ -113,9 +118,35 @@ export function quizQuestionKey(question: string): string {
   return question.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
+function questionBigrams(question: string): Set<string> {
+  const key = quizQuestionKey(question);
+  const grams = new Set<string>();
+  for (let index = 0; index < key.length - 1; index += 1) grams.add(key.slice(index, index + 2));
+  return grams;
+}
+
+export function quizQuestionSimilarity(first: string, second: string): number {
+  const firstKey = quizQuestionKey(first);
+  const secondKey = quizQuestionKey(second);
+  if (!firstKey || !secondKey) return 0;
+  if (firstKey === secondKey) return 1;
+  const firstGrams = questionBigrams(firstKey);
+  const secondGrams = questionBigrams(secondKey);
+  if (firstGrams.size === 0 || secondGrams.size === 0) return 0;
+  let overlap = 0;
+  firstGrams.forEach((gram) => { if (secondGrams.has(gram)) overlap += 1; });
+  return overlap * 2 / (firstGrams.size + secondGrams.size);
+}
+
 export function isQuizQuestionExcluded(question: string, excludedQuestions: readonly string[]): boolean {
   const key = quizQuestionKey(question);
-  return key.length > 0 && excludedQuestions.some((excluded) => quizQuestionKey(excluded) === key);
+  return key.length > 0 && excludedQuestions.some((excluded) => {
+    const excludedKey = quizQuestionKey(excluded);
+    if (excludedKey === key) return true;
+    const shorter = key.length <= excludedKey.length ? key : excludedKey;
+    const longer = key.length > excludedKey.length ? key : excludedKey;
+    return shorter.length >= 12 && longer.includes(shorter) || quizQuestionSimilarity(key, excludedKey) >= 0.68;
+  });
 }
 
 export function fallbackQuiz(incidentId: QuizIncidentId, degradedReason: NonNullable<QuizResult["degradedReason"]>): QuizResult {

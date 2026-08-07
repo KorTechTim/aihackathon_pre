@@ -29,11 +29,21 @@ export async function fulfillDialogue(route, source = "fallback") {
 
 export async function fulfillQuiz(route, source = "fallback") {
   const request = route.request().postDataJSON();
+  const question = {
+    first_response: `${request.incidentLabel} 발견 직후 ${request.actionLabel} 전에 가장 먼저 확인할 것은 무엇일까요?`,
+    hidden_hazard: `${request.incidentLabel} 현장에서 겉으로 보이지 않는 2차 위험을 피하려면 무엇을 살펴야 할까요?`,
+    safe_sequence: `${request.actionLabel} 임무를 안전하게 진행하는 올바른 순서는 무엇일까요?`,
+    protective_setup: `${request.incidentLabel} 대응 전에 필요한 보호 준비로 가장 알맞은 것은 무엇일까요?`,
+    evacuation: `${request.incidentLabel} 주변 주민의 대피 동선을 정할 때 우선할 기준은 무엇일까요?`,
+    communication: `${request.incidentLabel} 상황을 본부에 보고할 때 반드시 포함할 정보는 무엇일까요?`,
+    post_check: `${request.actionLabel} 완료 후 현장 통제를 풀기 전에 무엇을 다시 확인해야 할까요?`,
+    priority: `${request.incidentLabel}에서 두 위험이 동시에 커질 때 무엇을 우선해야 할까요?`,
+  }[request.questionFocus] ?? `${request.incidentLabel}의 ${request.actionLabel} 단계에서 가장 안전한 행동은 무엇일까요?`;
   await route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
-      question: `${request.incidentLabel}의 ${request.actionLabel} 단계에서 가장 안전한 행동은 무엇일까요?`,
+      question,
       options: [
         { id: "a", label: "보호 장비 없이 바로 접근한다" },
         { id: "b", label: "주변을 통제하고 안전 절차에 따라 대응한다" },
@@ -50,12 +60,15 @@ export async function fulfillQuiz(route, source = "fallback") {
 
 export async function fulfillNews(route, source = "fallback") {
   const request = route.request().postDataJSON();
+  const stageEdition = request.edition === "stage" && (request.completedWave === 1 || request.completedWave === 2);
   await route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
-      headline: `구조 로봇 협동으로 마을 사고 ${request.resolvedIncidents.length}건 해결`,
-      article: `구조대는 주민 ${request.rescuedResidents}명을 안전하게 대피시키고 마을 보존율 ${request.villagePreservation}%를 지켰다. 현장 기록을 바탕으로 후속 안전 점검도 시작됐다.`,
+      headline: stageEdition ? `WAVE ${request.completedWave} 현장 재난 해결, 다음 지역 출동` : `구조 로봇 협동으로 마을 사고 ${request.resolvedIncidents.length}건 해결`,
+      article: stageEdition
+        ? `구조대가 현재 현장을 모두 안정시키고 마을 보존율 ${request.villagePreservation}%를 지켰다. 본부는 기록을 정리한 뒤 다음 재난 지역으로 즉시 출동한다.`
+        : `구조대는 주민 ${request.rescuedResidents}명을 안전하게 대피시키고 마을 보존율 ${request.villagePreservation}%를 지켰다. 현장 기록을 바탕으로 후속 안전 점검도 시작됐다.`,
       interviewQuote: "구조대가 끝까지 주민들을 살펴줘서 모두 안심할 수 있었어요.",
       source,
       requestId: "qa-news-request",
@@ -119,7 +132,10 @@ export async function performAction(page, { incidentId, robot, actionName, actio
   }
   const quiz = page.locator(`[data-safety-quiz="${incidentId}"]`);
   await quiz.waitFor({ state: "visible", timeout: 8_000 });
-  await quiz.locator('[data-quiz-option="b"]').click();
+  await page.waitForFunction((id) => document.querySelector(`[data-safety-quiz="${id}"]`)?.getAttribute("data-quiz-source") !== "loading", incidentId, { timeout: 8_000 });
+  const correctOption = await quiz.getAttribute("data-qa-correct-option");
+  if (!correctOption || !["a", "b", "c"].includes(correctOption)) throw new Error(`quiz answer is unavailable for ${incidentId}`);
+  await quiz.locator(`[data-quiz-option="${correctOption}"]`).click();
   await quiz.waitFor({ state: "hidden", timeout: 3_000 });
   await waitForDebug(page, ({ expectedIncident, expectedAction, expectedRobot }) => {
     const game = window.__PIXEL_PANIC_DEBUG__?.game;

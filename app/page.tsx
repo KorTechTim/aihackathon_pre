@@ -27,8 +27,10 @@ import { DIALOGUE_EVENTS, buildDialogueRequest, dialogueForAction, type Dialogue
 import { deriveWorldSnapshot, type IncidentId as LegacyIncidentId } from "@/lib/game-state";
 import { clampMapPanX, mapPanFromPointerDelta, revealMapAnchor } from "@/lib/map-pan";
 import { NPC_DIALOGUES, NPC_DIALOGUE_IDS, buildNpcDialogueRequest, fallbackNpcDialogue, isNpcDialogueExcluded, type NpcDialogueId } from "@/lib/npc-dialogue";
-import { buildResultNewsRequest, fallbackResultNews, normalizeResultNews, type ResultNewsRequest, type ResultNewsResponse } from "@/lib/result-news";
+import { buildResultNewsRequest, buildStageNewsRequest, fallbackResultNews, normalizeResultNews, type ResultNewsRequest, type ResultNewsResponse } from "@/lib/result-news";
 import {
+  MAX_EXCLUDED_QUIZ_QUESTIONS,
+  MAX_SAFETY_QUIZ_SEQUENCE,
   buildSafetyQuizRequest,
   fallbackSafetyQuiz,
   isSafetyQuizQuestionExcluded,
@@ -46,7 +48,9 @@ import {
   WAVE_LABELS,
   abandonGame,
   advanceGame,
+  advanceToNextWave,
   applyDialogueChoice,
+  canAdvanceToNextWave,
   createInitialGame,
   formatGameTime,
   getAvailableActions,
@@ -102,6 +106,7 @@ type BombDefusalView = {
   selectedWire: BombWire | null;
   status: "armed" | "success" | "failure";
 };
+type StageTransitionView = { completedWave: 1 | 2; snapshot: RescueGameState };
 type MapDragState = { pointerId: number; startClientX: number; startOffset: number; renderedWidth: number };
 
 declare global {
@@ -114,12 +119,14 @@ declare global {
       game: RescueGameState;
       stageMap: StageMapId;
       npcSpeech: NpcSpeech | null;
+      quizHistory: () => { sequence: number; questions: string[] };
       audio: () => ReturnType<PixelPanicAudio["getDebugState"]>;
     };
   }
 }
 
 const ASSET = "/assets/pixel-panic";
+const QUIZ_HISTORY_STORAGE_KEY = "pixel-panic:safety-quiz-history:v2";
 const ROBOT_META: Record<RobotId, { name: string; role: string; color: string }> = {
   aqua: { name: "AQUA", role: "소방 · 수위", color: "aqua" },
   fix: { name: "FIX", role: "전력 · 수리", color: "fix" },
@@ -171,6 +178,7 @@ export default function Home() {
   const [safetyQuiz, setSafetyQuiz] = useState<SafetyQuizView | null>(null);
   const [catRescue, setCatRescue] = useState<CatRescueView | null>(null);
   const [bombDefusal, setBombDefusal] = useState<BombDefusalView | null>(null);
+  const [stageTransition, setStageTransition] = useState<StageTransitionView | null>(null);
   const [arrivedMissionQueue, setArrivedMissionQueue] = useState<ActiveRobotMission[]>([]);
   const [npcSpeech, setNpcSpeech] = useState<NpcSpeech | null>(null);
   const [actionPopupOpen, setActionPopupOpen] = useState(false);
@@ -181,6 +189,7 @@ export default function Home() {
   const quizAbortRef = useRef<AbortController | null>(null);
   const bombHintAbortRef = useRef<AbortController | null>(null);
   const askedQuizQuestionsRef = useRef<string[]>([]);
+  const quizSequenceRef = useRef(0);
   const quizDispatchTimerRef = useRef<number | null>(null);
   const catRescueAttemptRef = useRef(0);
   const bombDefusalAttemptRef = useRef(0);
@@ -209,6 +218,21 @@ export default function Home() {
     audio.play(effect);
     if (screen === "play" && !paused && game.status === "playing") void audio.startMusic();
   }, [game.status, getAudio, paused, screen, soundOn]);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(QUIZ_HISTORY_STORAGE_KEY) ?? "null") as { sequence?: unknown; questions?: unknown } | null;
+      if (!stored) return;
+      if (Number.isInteger(stored.sequence)) quizSequenceRef.current = Math.min(MAX_SAFETY_QUIZ_SEQUENCE - 1, Math.max(0, stored.sequence as number));
+      if (Array.isArray(stored.questions)) {
+        askedQuizQuestionsRef.current = stored.questions
+          .filter((question): question is string => typeof question === "string" && question.length >= 10 && question.length <= 120)
+          .slice(-MAX_EXCLUDED_QUIZ_QUESTIONS);
+      }
+    } catch {
+      window.localStorage.removeItem(QUIZ_HISTORY_STORAGE_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -263,7 +287,7 @@ export default function Home() {
   }, [loadAttempt]);
 
   useEffect(() => {
-    if (screen !== "play" || paused || safetyQuiz || catRescue || bombDefusal || game.status !== "playing") {
+    if (screen !== "play" || paused || safetyQuiz || catRescue || bombDefusal || stageTransition || game.status !== "playing") {
       lastTickRef.current = null;
       return;
     }
@@ -275,7 +299,7 @@ export default function Home() {
       setGame((current) => advanceGame(current, delta, (dialogue ? 0.7 : 1) * tickScale));
     }, 250);
     return () => window.clearInterval(timer);
-  }, [bombDefusal, catRescue, dialogue, game.status, paused, safetyQuiz, screen]);
+  }, [bombDefusal, catRescue, dialogue, game.status, paused, safetyQuiz, screen, stageTransition]);
 
   useEffect(() => {
     if (screen !== "play" || game.status === "playing") return;
@@ -347,6 +371,7 @@ export default function Home() {
       game,
       stageMap: stageMap.id,
       npcSpeech,
+      quizHistory: () => ({ sequence: quizSequenceRef.current, questions: [...askedQuizQuestionsRef.current] }),
       audio: () => audioRef.current?.getDebugState() ?? { enabled: soundOn, requestedTrack: null, activeTrack: null, musicPlaying: false, contextState: "uninitialized" },
     };
     return () => { delete window.__PIXEL_PANIC_DEBUG__; };
@@ -378,6 +403,7 @@ export default function Home() {
     setSafetyQuiz(null);
     setCatRescue(null);
     setBombDefusal(null);
+    setStageTransition(null);
     setArrivedMissionQueue([]);
     setNpcSpeech(null);
     setActionPopupOpen(false);
@@ -386,7 +412,6 @@ export default function Home() {
     setToast(null);
     setMapPanX(0);
     setMapDragging(false);
-    askedQuizQuestionsRef.current = [];
     catRescueAttemptRef.current = 0;
     bombDefusalAttemptRef.current = 0;
     npcDialogueHistoryRef.current = [];
@@ -484,9 +509,13 @@ export default function Home() {
     const pending = currentGame.robots[action.robotId].pendingAction;
     if (!pending || pending.incidentId !== incidentId || pending.actionId !== actionId) return;
     const excludedQuestions = [...askedQuizQuestionsRef.current];
-    const quizSequence = excludedQuestions.length + 1;
-    const quizRequest = buildSafetyQuizRequest(currentGame, incidentId, actionId, { quizSequence, excludedQuestions });
-    const localFallback = fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions, quizSequence });
+    const quizSequence = Math.min(MAX_SAFETY_QUIZ_SEQUENCE, quizSequenceRef.current + 1);
+    quizSequenceRef.current = quizSequence;
+    const randomValues = new Uint32Array(1);
+    window.crypto.getRandomValues(randomValues);
+    const variationSeed = randomValues[0] & 0x7fffffff;
+    const quizRequest = buildSafetyQuizRequest(currentGame, incidentId, actionId, { quizSequence, variationSeed, excludedQuestions });
+    const localFallback = fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions, quizSequence, questionFocus: quizRequest.questionFocus, variationSeed });
     quizAbortRef.current?.abort();
     if (quizDispatchTimerRef.current !== null) window.clearTimeout(quizDispatchTimerRef.current);
     const controller = new AbortController();
@@ -510,10 +539,13 @@ export default function Home() {
       if (quizAbortRef.current !== controller) return;
       const latestExcludedQuestions = askedQuizQuestionsRef.current;
       const uniqueQuiz = isSafetyQuizQuestionExcluded(quiz.question, latestExcludedQuestions)
-        ? fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions: latestExcludedQuestions, quizSequence })
+        ? fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions: latestExcludedQuestions, quizSequence, questionFocus: quizRequest.questionFocus, variationSeed })
         : quiz;
       if (isSafetyQuizQuestionExcluded(uniqueQuiz.question, latestExcludedQuestions)) return;
-      askedQuizQuestionsRef.current = [...latestExcludedQuestions, uniqueQuiz.question];
+      askedQuizQuestionsRef.current = [...latestExcludedQuestions, uniqueQuiz.question].slice(-MAX_EXCLUDED_QUIZ_QUESTIONS);
+      try {
+        window.localStorage.setItem(QUIZ_HISTORY_STORAGE_KEY, JSON.stringify({ sequence: quizSequenceRef.current, questions: askedQuizQuestionsRef.current }));
+      } catch {}
       setSafetyQuiz((current) => current?.pendingAction.incidentId === incidentId && current.pendingAction.actionId === actionId
         ? { ...current, quiz: uniqueQuiz, loading: false }
         : current);
@@ -675,6 +707,27 @@ export default function Home() {
     }, 1_050);
   }, [bombDefusal, playSound]);
 
+  useEffect(() => {
+    if (screen !== "play" || stageTransition || paused || showHelp || dialogue || safetyQuiz || catRescue || bombDefusal) return;
+    if (!canAdvanceToNextWave(game)) return;
+    const completedWave = game.wave as 1 | 2;
+    npcDialogueAbortRef.current?.abort();
+    npcDialogueAbortRef.current = null;
+    if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
+    setNpcSpeech(null);
+    setActionPopupOpen(false);
+    setStageTransition({ completedWave, snapshot: game });
+  }, [bombDefusal, catRescue, dialogue, game, paused, safetyQuiz, screen, showHelp, stageTransition]);
+
+  const continueToNextStage = useCallback(() => {
+    if (!stageTransition) return;
+    setGame((current) => advanceToNextWave(current));
+    setStageTransition(null);
+    setActionPopupOpen(false);
+    setMapPanX(0);
+    playSound("button");
+  }, [playSound, stageTransition]);
+
   const toggleSound = useCallback(() => {
     const next = !soundOn;
     setSoundOn(next);
@@ -811,6 +864,7 @@ export default function Home() {
         {screen === "result" && <ResultScreen game={game} onRetry={startGame} onTitle={() => setScreen("title")} />}
 
         {game.briefingMs > 0 && screen === "play" && <WaveBriefing wave={game.wave} />}
+        {stageTransition && screen === "play" && <StageNewsTransition view={stageTransition} onContinue={continueToNextStage} />}
         {game.comboBanner && screen === "play" && <div className="combo-banner"><small>PERFECT COMBO</small><strong>{game.comboBanner}</strong><span>+150</span></div>}
         {dialogue && screen === "play" && <DialogueModal view={dialogue} incidentPosition={stageMap.incidentPositions[dialogue.pendingAction.incidentId]} mapPanX={mapPanX} onChoose={chooseDialogue} />}
         {safetyQuiz && screen === "play" && <SafetyQuizModal view={safetyQuiz} onAnswer={answerSafetyQuiz} />}
@@ -1073,6 +1127,7 @@ function SafetyQuizModal({ view, onAnswer }: { view: SafetyQuizView; onAnswer: (
         data-quiz-source={view.loading ? "loading" : view.quiz.source}
         data-quiz-status={view.status}
         data-quiz-difficulty={view.difficulty}
+        data-qa-correct-option={debugEnabled ? view.quiz.correctOptionId : undefined}
       >
         <header>
           <img src={`${ASSET}/ui/portraits/pp_ui_portrait_${action.robotId}_busy.png`} alt="" />
@@ -1369,6 +1424,55 @@ function LoadingScreen({ progress, error, onRetry }: { progress: number; error: 
 function TitleScreen({ soundOn, onSound, onStart, onHelp }: { soundOn: boolean; onSound: () => void; onStart: () => void; onHelp: () => void }) {
   return (
     <section className="title-screen"><img className="screen-bg" src={`${ASSET}/ui/screens/pp_ui_screen_title_final.webp`} alt="AQUA, FIX, BUDDY가 출동을 준비하는 구조 마을" /><div className="title-vignette" /><button className="sound-button icon-control" onClick={onSound} aria-label={soundOn ? "소리 끄기" : "소리 켜기"}><img src={`${ASSET}/ui/icons/pp_ui_icon_sound_${soundOn ? "on" : "off"}.png`} alt="" /></button><div className="title-content"><span className="title-kicker"><i /> NHN AI 해커톤 <i /></span><div className="title-lockup"><span>NHN AI HACKATHON</span><h1>PIXEL <em>PANIC</em></h1><b>AI 구조대</b></div><p>번지는 사고를 분석하고 세 로봇을 올바른 순서로 배치하세요.<br /><strong>당신의 클릭으로 마을을 구조합니다.</strong></p><div className="title-actions"><PixelButton className="hero-button" onClick={onStart}>구조 작전 시작</PixelButton><PixelButton variant="secondary" onClick={onHelp}>플레이 방법</PixelButton></div></div><div className="role-pills" aria-label="구조 로봇 역할"><span className="aqua"><b>AQUA</b> FIRE & WATER</span><span className="fix"><b>FIX</b> REPAIR & POWER</span><span className="buddy"><b>BUDDY</b> RESCUE & CARE</span></div></section>
+  );
+}
+
+function StageNewsTransition({ view, onContinue }: { view: StageTransitionView; onContinue: () => void }) {
+  const request = useMemo(() => buildStageNewsRequest(view.snapshot, view.completedWave), [view.completedWave, view.snapshot]);
+  const [news, setNews] = useState<ResultNewsResponse>(() => fallbackResultNews(request));
+  const [loading, setLoading] = useState(true);
+  const interviewee = NPC_DIALOGUES[request.intervieweeId];
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    const localFallback = fallbackResultNews(request);
+    setNews(localFallback);
+    setLoading(true);
+    const timeout = window.setTimeout(() => controller.abort(), 5_200);
+    void fetch("/api/news", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) return localFallback;
+      const data = await response.json() as { source?: unknown };
+      const normalized = normalizeResultNews(data);
+      return normalized && (data.source === "openai" || data.source === "fallback")
+        ? { ...normalized, source: data.source } as ResultNewsResponse
+        : localFallback;
+    }).catch(() => localFallback).then((result) => {
+      if (active) setNews(result);
+    }).finally(() => {
+      window.clearTimeout(timeout);
+      if (active) setLoading(false);
+    });
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
+  }, [request]);
+
+  return (
+    <div className="modal-backdrop result-news-backdrop" role="presentation">
+      <article className="result-news-card stage-news-card pixel-command" role="dialog" aria-modal="true" aria-labelledby="stage-news-headline" data-stage-news={view.completedWave} data-news-source={loading ? "loading" : news.source}>
+        <header><span><b>PIXEL VILLAGE NEWS</b><small>WAVE {view.completedWave} 구조 완료 특별판</small></span><em className={loading ? "fallback" : news.source}>{loading ? "GPT 작성 중" : news.source === "openai" ? "GPT LIVE" : "LOCAL EDITION"}</em></header>
+        <section className="result-news-article"><small>다음 지역 출동 속보</small><h2 id="stage-news-headline">{news.headline}</h2><p>{news.article}</p></section>
+        <section className="result-news-interview">
+          <span className="result-news-portrait" style={{ backgroundImage: `url(${ASSET}/characters/npcs/pp_char_npc_${interviewee.spriteId}_idle.png)` }} aria-hidden="true" />
+          <div><small>현장 주민 인터뷰</small><strong>{interviewee.name} · {interviewee.role}</strong><blockquote>“{news.interviewQuote}”</blockquote></div>
+        </section>
+        <footer><div><span>마을 보존 {request.villagePreservation}%</span><span>누적 해결 {request.resolvedIncidents.length}건</span></div><PixelButton onClick={onContinue}>WAVE {view.completedWave + 1} · {WAVE_LABELS[view.completedWave]} 출동</PixelButton></footer>
+      </article>
+    </div>
   );
 }
 
