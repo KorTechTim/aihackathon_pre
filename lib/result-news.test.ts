@@ -12,7 +12,7 @@ test("결과 뉴스 요청은 실제 게임 기록과 허용된 인터뷰 대상
   INCIDENT_IDS.forEach((id) => { game.incidents[id].status = "resolved"; });
   const request = buildResultNewsRequest(game);
   assert.equal(request.status, "success");
-  assert.equal(request.resolvedIncidents.length, 10);
+  assert.equal(request.resolvedIncidents.length, 11);
   assert.equal(request.unresolvedIncidents.length, 0);
   assert.equal(request.intervieweeId, "npc_hana");
   assert.equal(request.language, "ko");

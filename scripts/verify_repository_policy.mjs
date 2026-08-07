@@ -24,7 +24,7 @@ assert.deepEqual(trackedFiles.filter((file) => file.endsWith(".env.production") 
 const publicSecretNames = textFiles.filter(({ text }) => /NEXT_PUBLIC_[A-Z0-9_]*(?:KEY|TOKEN|SECRET)/.test(text)).map(({ file }) => file);
 assert.deepEqual(publicSecretNames, [], "Public environment variable name looks secret");
 
-const nextRoutes = ["app/api/plan/route.ts", "app/api/dialogue/route.ts", "app/api/quiz/route.ts", "app/api/news/route.ts"].map((file) => readFileSync(file, "utf8")).join("\n");
+const nextRoutes = ["app/api/plan/route.ts", "app/api/dialogue/route.ts", "app/api/quiz/route.ts", "app/api/bomb-hint/route.ts", "app/api/news/route.ts"].map((file) => readFileSync(file, "utf8")).join("\n");
 const openAiKeyName = ["OPENAI", "API", "KEY"].join("_");
 assert.equal(nextRoutes.includes(openAiKeyName), false, "Vercel Routes must not read the OpenAI key");
 assert.equal(nextRoutes.includes('from "openai"'), false, "Vercel Routes must not import the OpenAI SDK");
@@ -33,6 +33,7 @@ const page = readFileSync("app/page.tsx", "utf8");
 assert.equal(page.includes("OCI_BACKEND"), false, "Client page must not read OCI server configuration");
 assert.match(page, /fetch\("\/api\/dialogue"/);
 assert.match(page, /fetch\("\/api\/quiz"/);
+assert.match(page, /fetch\("\/api\/bomb-hint"/);
 assert.match(page, /fetch\("\/api\/news"/);
 assert.equal(/<(?:input|textarea)\b/i.test(page), false, "Client game must remain click/touch only");
 

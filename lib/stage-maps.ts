@@ -43,6 +43,7 @@ const CLASSIC_INCIDENTS = {
   electrical_short: [1144, 166], bakery_fire: [300, 252], gas_risk: [1210, 330], power_flood: [1010, 240],
   river_overflow: [790, 520], bridge_damage: [850, 350], resident_isolation: [600, 470], house_fire: [610, 220],
   cat_trapped: [496, 176], east_residents: [1110, 500],
+  suspicious_bomb: [770, 190],
 } as const;
 const CLASSIC_TARGETS = { fire: [300, 208], bridge: [848, 336], cat: [496, 176], generator: [992, 208] } as const;
 const CLASSIC_ROUTES = {
@@ -56,6 +57,7 @@ const CLASSIC_ROUTES = {
   house_fire: [[340, 450], [500, 370], [500, 280], [610, 220]],
   cat_trapped: [[340, 450], [500, 370], [500, 280], [496, 176]],
   east_residents: [[340, 450], [520, 370], [700, 320], [850, 330], [980, 380], [1050, 450], [1110, 500]],
+  suspicious_bomb: [[340, 450], [500, 370], [620, 290], [700, 230], [770, 190]],
 } as const;
 
 function classicMap(id: StageMapId, label: string, file: string): StageMapDefinition {
@@ -80,6 +82,7 @@ export const STAGE_MAPS: readonly StageMapDefinition[] = [
       electrical_short: [1180, 150], bakery_fire: [945, 420], gas_risk: [1110, 482], power_flood: [1065, 225],
       river_overflow: [490, 542], bridge_damage: [688, 495], resident_isolation: [332, 420], house_fire: [790, 205],
       cat_trapped: [570, 190], east_residents: [850, 405],
+      suspicious_bomb: [420, 170],
     },
     legacyTargets: { fire: [945, 420], bridge: [688, 495], cat: [570, 190], generator: [1065, 225] },
     routes: {
@@ -93,6 +96,7 @@ export const STAGE_MAPS: readonly StageMapDefinition[] = [
       house_fire: [[480, 225], [650, 215], [790, 205]],
       cat_trapped: [[410, 230], [570, 190]],
       east_residents: [[450, 260], [650, 330], [850, 405]],
+      suspicious_bomb: [[360, 225], [420, 170]],
     },
     legacyStructureOverlays: false,
   },
@@ -104,6 +108,7 @@ export const STAGE_MAPS: readonly StageMapDefinition[] = [
       electrical_short: [215, 310], bakery_fire: [1020, 185], gas_risk: [1150, 255], power_flood: [135, 420],
       river_overflow: [330, 548], bridge_damage: [402, 402], resident_isolation: [710, 405], house_fire: [985, 445],
       cat_trapped: [1110, 345], east_residents: [805, 520],
+      suspicious_bomb: [520, 500],
     },
     legacyTargets: { fire: [1020, 185], bridge: [402, 402], cat: [1110, 345], generator: [135, 420] },
     routes: {
@@ -117,6 +122,7 @@ export const STAGE_MAPS: readonly StageMapDefinition[] = [
       house_fire: [[750, 310], [870, 390], [985, 445]],
       cat_trapped: [[800, 275], [950, 320], [1110, 345]],
       east_residents: [[650, 350], [720, 450], [805, 520]],
+      suspicious_bomb: [[560, 300], [540, 410], [520, 500]],
     },
     legacyStructureOverlays: false,
   },
@@ -128,6 +134,7 @@ export const STAGE_MAPS: readonly StageMapDefinition[] = [
       electrical_short: [305, 150], bakery_fire: [1045, 170], gas_risk: [1170, 245], power_flood: [180, 245],
       river_overflow: [430, 380], bridge_damage: [640, 450], resident_isolation: [280, 500], house_fire: [1110, 500],
       cat_trapped: [995, 420], east_residents: [640, 320],
+      suspicious_bomb: [640, 180],
     },
     legacyTargets: { fire: [1045, 170], bridge: [640, 450], cat: [995, 420], generator: [180, 245] },
     routes: {
@@ -141,6 +148,7 @@ export const STAGE_MAPS: readonly StageMapDefinition[] = [
       house_fire: [[800, 520], [1110, 500]],
       cat_trapped: [[790, 500], [900, 455], [995, 420]],
       east_residents: [[640, 450], [640, 320]],
+      suspicious_bomb: [[640, 470], [640, 320], [640, 180]],
     },
     legacyStructureOverlays: false,
   },
@@ -152,6 +160,7 @@ export const STAGE_MAPS: readonly StageMapDefinition[] = [
       electrical_short: [1160, 420], bakery_fire: [480, 185], gas_risk: [570, 260], power_flood: [1050, 505],
       river_overflow: [680, 535], bridge_damage: [805, 400], resident_isolation: [205, 485], house_fire: [835, 205],
       cat_trapped: [685, 185], east_residents: [600, 325],
+      suspicious_bomb: [1060, 280],
     },
     legacyTargets: { fire: [480, 185], bridge: [805, 400], cat: [685, 185], generator: [1050, 505] },
     routes: {
@@ -165,6 +174,7 @@ export const STAGE_MAPS: readonly StageMapDefinition[] = [
       house_fire: [[400, 245], [600, 220], [835, 205]],
       cat_trapped: [[395, 245], [550, 210], [685, 185]],
       east_residents: [[380, 300], [600, 325]],
+      suspicious_bomb: [[390, 300], [640, 310], [850, 300], [1060, 280]],
     },
     legacyStructureOverlays: false,
   },

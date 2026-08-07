@@ -11,7 +11,7 @@ import {
 import { createInitialGame, INCIDENTS, INCIDENT_IDS } from "./rescue-engine";
 
 test("모든 긴급 상황은 정답 하나를 가진 로컬 안전 퀴즈를 제공한다", () => {
-  assert.equal(Object.keys(FALLBACK_SAFETY_QUIZZES).length, 10);
+  assert.equal(Object.keys(FALLBACK_SAFETY_QUIZZES).length, INCIDENT_IDS.length);
   Object.values(FALLBACK_SAFETY_QUIZZES).forEach((quiz) => {
     assert.deepEqual(quiz.options.map((option) => option.id), ["a", "b", "c"]);
     assert.equal(quiz.options.some((option) => option.id === quiz.correctOptionId), true);
@@ -44,7 +44,7 @@ test("공백과 문장 부호만 다른 중복 질문을 거부하고 다른 폴
   assert.notEqual(second.question, first.question);
 });
 
-test("한 작전에서 가능한 16개 행동의 로컬 문제도 전부 서로 다르다", () => {
+test("한 작전에서 가능한 모든 행동의 로컬 문제도 전부 서로 다르다", () => {
   const history: string[] = [];
   INCIDENT_IDS.forEach((incidentId) => {
     INCIDENTS[incidentId].allowedActions.forEach((actionId) => {
@@ -53,8 +53,9 @@ test("한 작전에서 가능한 16개 행동의 로컬 문제도 전부 서로 
       history.push(next.question);
     });
   });
-  assert.equal(history.length, 16);
-  assert.equal(new Set(history).size, 16);
+  const actionCount = INCIDENT_IDS.reduce((sum, incidentId) => sum + INCIDENTS[incidentId].allowedActions.length, 0);
+  assert.equal(history.length, actionCount);
+  assert.equal(new Set(history).size, actionCount);
 });
 
 test("중복 보기 ID와 마크다운이 포함된 AI 응답은 거부한다", () => {

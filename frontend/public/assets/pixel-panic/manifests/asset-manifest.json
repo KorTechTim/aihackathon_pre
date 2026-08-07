@@ -14,9 +14,9 @@
     "spritesheetMaximumBytes": 2000000
   },
   "totals": {
-    "P0": 1083156,
+    "P0": 1190217,
     "P1": 2843505,
-    "P2": 1696988
+    "P2": 2356006
   },
   "assets": [
     {
@@ -880,6 +880,16 @@
       "priority": "P0"
     },
     {
+      "key": "pp_ui_icon_incident_bomb",
+      "type": "image",
+      "url": "ui/icons/pp_ui_icon_incident_bomb.png",
+      "format": "png",
+      "width": 64,
+      "height": 64,
+      "bytes": 5122,
+      "priority": "P0"
+    },
+    {
       "key": "pp_ui_icon_incident_bridge",
       "type": "image",
       "url": "ui/icons/pp_ui_icon_incident_bridge.png",
@@ -1070,6 +1080,16 @@
       "priority": "P0"
     },
     {
+      "key": "pp_ui_bomb_defusal_case",
+      "type": "image",
+      "url": "ui/minigames/pp_ui_bomb_defusal_case.png",
+      "format": "png",
+      "width": 900,
+      "height": 520,
+      "bytes": 659018,
+      "priority": "P2"
+    },
+    {
       "key": "pp_ui_buddy_pillow_catch",
       "type": "image",
       "url": "ui/minigames/pp_ui_buddy_pillow_catch.png",
@@ -1237,6 +1257,16 @@
       "width": 64,
       "height": 64,
       "bytes": 5241,
+      "priority": "P0"
+    },
+    {
+      "key": "pp_ui_portrait_hq_ai",
+      "type": "image",
+      "url": "ui/portraits/pp_ui_portrait_hq_ai.png",
+      "format": "png",
+      "width": 256,
+      "height": 256,
+      "bytes": 101939,
       "priority": "P0"
     },
     {

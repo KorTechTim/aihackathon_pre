@@ -10,6 +10,7 @@ export const INCIDENT_IDS = [
   "house_fire",
   "cat_trapped",
   "east_residents",
+  "suspicious_bomb",
 ] as const;
 
 export const ACTION_IDS = [
@@ -25,6 +26,7 @@ export const ACTION_IDS = [
   "rescue_cat",
   "clear_debris",
   "firebreak",
+  "defuse_bomb",
 ] as const;
 
 export type RobotId = (typeof ROBOT_IDS)[number];
@@ -58,7 +60,7 @@ export type IncidentDefinition = {
   requiredProgress: number;
   scoreValue: number;
   mapPosition: readonly [number, number];
-  icon: "fire" | "bridge" | "cat" | "generator";
+  icon: "fire" | "bridge" | "cat" | "generator" | "bomb";
 };
 
 export type IncidentRuntime = {
@@ -153,6 +155,7 @@ export const ACTIONS: Record<ActionId, ActionDefinition> = {
   rescue_cat: { id: "rescue_cat", label: "고양이 구조", robotId: "buddy", durationMs: 6_000, description: "옥상에 고립된 고양이를 구조합니다." },
   clear_debris: { id: "clear_debris", label: "장애물 제거", robotId: "fix", durationMs: 6_000, description: "방화선을 만들 공간을 확보합니다." },
   firebreak: { id: "firebreak", label: "주변 방화 처리", robotId: "aqua", durationMs: 8_000, description: "주변을 적셔 불길의 이동을 차단합니다." },
+  defuse_bomb: { id: "defuse_bomb", label: "폭탄 해체", robotId: "fix", durationMs: 7_000, description: "본부 AI의 무전 힌트를 분석해 안전 회로를 차단합니다." },
 };
 
 export const INCIDENTS: Record<IncidentId, IncidentDefinition> = {
@@ -166,6 +169,7 @@ export const INCIDENTS: Record<IncidentId, IncidentDefinition> = {
   house_fire: { id: "house_fire", label: "민가 확산 화재", shortLabel: "민가 화재", type: "fire", nodeId: "east_house", wave: 3, initialSeverity: 2, maxSeverity: 3, spreadAfterMs: 20_000, spreadsTo: ["east_residents"], allowedActions: ["clear_debris", "firebreak", "extinguish"], requiredProgress: 100, scoreValue: 100, mapPosition: [610, 220], icon: "fire" },
   cat_trapped: { id: "cat_trapped", label: "옥상 고양이 고립", shortLabel: "고양이", type: "rescue", nodeId: "cat_house", wave: 3, initialSeverity: 1, maxSeverity: 2, spreadAfterMs: 30_000, spreadsTo: [], allowedActions: ["rescue_cat"], requiredProgress: 100, scoreValue: 100, mapPosition: [496, 176], icon: "cat" },
   east_residents: { id: "east_residents", label: "동쪽 주민 고립", shortLabel: "동쪽 주민", type: "rescue", nodeId: "square", wave: 3, initialSeverity: 1, maxSeverity: 3, spreadAfterMs: 28_000, spreadsTo: [], allowedActions: ["rescue_residents"], requiredProgress: 100, scoreValue: 100, mapPosition: [1110, 500], icon: "cat" },
+  suspicious_bomb: { id: "suspicious_bomb", label: "광장 폭탄 위협", shortLabel: "폭탄", type: "bomb", nodeId: "bomb_site", wave: 3, initialSeverity: 2, maxSeverity: 3, spreadAfterMs: 26_000, spreadsTo: [], allowedActions: ["defuse_bomb"], requiredProgress: 100, scoreValue: 150, mapPosition: [770, 190], icon: "bomb" },
 };
 
 export const COMBOS: readonly ComboDefinition[] = [
@@ -179,7 +183,7 @@ export const COMBOS: readonly ComboDefinition[] = [
 const WAVE_INCIDENTS: Record<1 | 2 | 3, IncidentId[]> = {
   1: ["electrical_short", "bakery_fire", "gas_risk"],
   2: ["power_flood", "river_overflow", "bridge_damage", "resident_isolation"],
-  3: ["house_fire", "cat_trapped", "east_residents"],
+  3: ["house_fire", "cat_trapped", "east_residents", "suspicious_bomb"],
 };
 
 const RESOLUTION_PATHS: Record<IncidentId, readonly (readonly ActionId[])[]> = {
@@ -193,6 +197,7 @@ const RESOLUTION_PATHS: Record<IncidentId, readonly (readonly ActionId[])[]> = {
   house_fire: [["extinguish"], ["clear_debris", "firebreak"]],
   cat_trapped: [["rescue_cat"]],
   east_residents: [["rescue_residents"]],
+  suspicious_bomb: [["defuse_bomb"]],
 };
 
 function appendLog(state: RescueGameState, message: string, tone: GameLog["tone"] = "info"): void {
@@ -378,7 +383,7 @@ function completeAction(state: RescueGameState, robotId: RobotId): void {
     state.score += 100;
     resolveIncident(state, pending.incidentId);
   }
-  if (["cut_power", "shut_gas", "extinguish", "repair_power", "lower_water", "build_bridge"].includes(pending.actionId)) resolveIncident(state, pending.incidentId);
+  if (["cut_power", "shut_gas", "extinguish", "repair_power", "lower_water", "build_bridge", "defuse_bomb"].includes(pending.actionId)) resolveIncident(state, pending.incidentId);
   if (pending.actionId === "firebreak" && incident.completedActions.includes("clear_debris")) resolveIncident(state, pending.incidentId);
 
   detectCombo(state);
@@ -428,6 +433,40 @@ export function failCatRescueMinigame(state: RescueGameState): SafetyQuizResolut
     remainingActionMs: undefined,
     pendingAction: undefined,
     energy: Math.max(0, nextRobot.energy - 4),
+  };
+  return { state: next, ok: true };
+}
+
+export function resolveBombDefusalMinigame(state: RescueGameState): SafetyQuizResolutionResult {
+  const pending = state.robots.fix.pendingAction;
+  if (!pending || pending.incidentId !== "suspicious_bomb" || pending.actionId !== "defuse_bomb") {
+    return { state, ok: false, error: "현장 대기 중인 폭탄 해체 임무를 찾을 수 없습니다." };
+  }
+  const next = cloneState(state);
+  appendLog(next, "본부 AI 무전 판독 성공 · 폭탄 안전 회로 차단", "success");
+  completeAction(next, "fix");
+  return { state: next, ok: true };
+}
+
+export function failBombDefusalMinigame(state: RescueGameState): SafetyQuizResolutionResult {
+  const robot = state.robots.fix;
+  const pending = robot.pendingAction;
+  if (!pending || pending.incidentId !== "suspicious_bomb" || pending.actionId !== "defuse_bomb") {
+    return { state, ok: false, error: "현장 대기 중인 폭탄 해체 임무를 찾을 수 없습니다." };
+  }
+  const next = cloneState(state);
+  const nextRobot = next.robots.fix;
+  next.score -= 60;
+  appendLog(next, "회로 차단 실패 · 안전 장치 작동, 폭탄 해체 재시도 필요", "warning");
+  next.robots.fix = {
+    ...nextRobot,
+    status: "idle",
+    currentNodeId: INCIDENTS.suspicious_bomb.nodeId,
+    targetNodeId: undefined,
+    currentAction: undefined,
+    remainingActionMs: undefined,
+    pendingAction: undefined,
+    energy: Math.max(0, nextRobot.energy - 5),
   };
   return { state: next, ok: true };
 }

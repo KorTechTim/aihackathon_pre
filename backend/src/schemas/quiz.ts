@@ -1,10 +1,12 @@
 export const QUIZ_INCIDENT_IDS = [
   "electrical_short", "bakery_fire", "gas_risk", "power_flood", "river_overflow",
   "bridge_damage", "resident_isolation", "house_fire", "cat_trapped", "east_residents",
+  "suspicious_bomb",
 ] as const;
 export const QUIZ_ACTION_IDS = [
   "cut_power", "evacuate", "shut_gas", "extinguish", "carry_parts", "repair_power",
   "lower_water", "build_bridge", "rescue_residents", "rescue_cat", "clear_debris", "firebreak",
+  "defuse_bomb",
 ] as const;
 export const QUIZ_ROBOT_IDS = ["aqua", "fix", "buddy"] as const;
 export const QUIZ_OPTION_IDS = ["a", "b", "c"] as const;
@@ -61,6 +63,7 @@ export const FALLBACK_QUIZZES: Record<QuizIncidentId, QuizContent> = {
   house_fire: fallback("화재 연기가 찬 건물에서 대피할 때 올바른 자세는 무엇일까요?", ["서서 뛰며 크게 숨을 쉰다", "몸을 낮추고 젖은 천으로 코와 입을 가린다", "엘리베이터를 이용한다"], "b", "연기는 위로 모이므로 몸을 낮추고 호흡기를 보호하며 계단으로 대피해야 합니다."),
   cat_trapped: fallback("높고 불안정한 지붕에 동물이 고립됐을 때 안전한 방법은 무엇일까요?", ["보호 장비 없이 바로 지붕에 오른다", "동물이 뛰어내리도록 큰 소리를 낸다", "주변을 통제하고 안전 장비를 갖춘 구조를 요청한다"], "c", "사람과 동물 모두의 추락 위험을 줄이려면 현장을 통제하고 적절한 구조 장비를 사용해야 합니다."),
   east_residents: fallback("여러 주민을 한꺼번에 대피시킬 때 가장 알맞은 방법은 무엇일까요?", ["각자 빠른 길로 흩어져 이동한다", "안내에 따라 이동하고 어린이·노약자를 함께 돕는다", "짐을 모두 챙긴 뒤 마지막에 출발한다"], "b", "질서 있게 안내를 따르고 도움이 필요한 주민을 함께 살피면 추가 사고를 줄일 수 있습니다."),
+  suspicious_bomb: fallback("수상한 장치를 발견했을 때 일반 주민이 가장 먼저 해야 할 행동은 무엇일까요?", ["가까이 가서 선을 확인한다", "주변 접근을 막고 안전거리를 둔 뒤 신고한다", "장치를 다른 곳으로 옮긴다"], "b", "수상한 장치는 만지거나 옮기지 말고 안전거리를 확보한 뒤 전문 인력에게 알려야 합니다."),
 };
 
 export const quizJsonSchema = {

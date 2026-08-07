@@ -7,10 +7,12 @@ import {
   INCIDENT_IDS,
   advanceGame,
   createInitialGame,
+  failBombDefusalMinigame,
   failCatRescueMinigame,
   getGrade,
   getIncidentProgress,
   resolveActionWithSafetyQuiz,
+  resolveBombDefusalMinigame,
   resolveCatRescueMinigame,
   startAction,
   type ActionId,
@@ -46,6 +48,7 @@ test("사고 핀 좌표는 실제 마을 시설 위치에 고정된다", () => {
   assert.deepEqual(INCIDENTS.cat_trapped.mapPosition, [496, 176]);
   assert.deepEqual(INCIDENTS.power_flood.mapPosition, [1010, 240]);
   assert.deepEqual(INCIDENTS.bridge_damage.mapPosition, [850, 350]);
+  assert.deepEqual(INCIDENTS.suspicious_bomb.mapPosition, [770, 190]);
 });
 
 test("동시에 표시되는 사고 카드의 시설 앵커는 서로 겹치지 않는다", () => {
@@ -144,4 +147,26 @@ test("고양이 미니게임 성공은 사고를 해결하고 실패는 재도�
   assert.equal(failure.state.incidents.cat_trapped.completedActions.includes("rescue_cat"), false);
   assert.equal(failure.state.robots.buddy.status, "idle");
   assert.equal(startAction(failure.state, "cat_trapped", "rescue_cat").ok, true);
+});
+
+test("폭탄 해체 미니게임 성공은 사고를 해결하고 오답은 안전하게 재도전을 허용한다", () => {
+  const ready = skipBriefing(createInitialGame());
+  ready.wave = 3;
+  ready.incidents.suspicious_bomb.status = "active";
+
+  const successfulStart = startAction(ready, "suspicious_bomb", "defuse_bomb");
+  assert.equal(successfulStart.ok, true);
+  const success = resolveBombDefusalMinigame(successfulStart.state);
+  assert.equal(success.ok, true);
+  assert.equal(success.state.incidents.suspicious_bomb.status, "resolved");
+  assert.equal(success.state.robots.fix.status, "idle");
+
+  const failedStart = startAction(ready, "suspicious_bomb", "defuse_bomb");
+  assert.equal(failedStart.ok, true);
+  const failure = failBombDefusalMinigame(failedStart.state);
+  assert.equal(failure.ok, true);
+  assert.equal(failure.state.incidents.suspicious_bomb.status, "active");
+  assert.equal(failure.state.incidents.suspicious_bomb.completedActions.includes("defuse_bomb"), false);
+  assert.equal(failure.state.robots.fix.status, "idle");
+  assert.equal(startAction(failure.state, "suspicious_bomb", "defuse_bomb").ok, true);
 });

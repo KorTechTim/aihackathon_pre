@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { collectPageErrors, fulfillDialogue, fulfillNews, fulfillQuiz } from "./qa_helpers.mjs";
+import { collectPageErrors, fulfillBombHint, fulfillDialogue, fulfillNews, fulfillQuiz } from "./qa_helpers.mjs";
 
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3000";
 const browser = await chromium.launch({ headless: true });
@@ -215,6 +215,49 @@ await catGame.waitFor({ state: "hidden", timeout: 3_000 });
 await catPage.waitForFunction(() => window.__PIXEL_PANIC_DEBUG__?.game.catRescued === true);
 await catPage.close();
 
+const bombPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const bombErrors = collectPageErrors(bombPage);
+const bombHintRequests = [];
+await bombPage.route("**/api/bomb-hint", (route) => {
+  bombHintRequests.push(route.request().postDataJSON());
+  return fulfillBombHint(route, "openai");
+});
+await bombPage.goto(`${baseUrl}/?screen=play&skipBriefing=1&qaAll=1`, { waitUntil: "networkidle" });
+await bombPage.locator('[data-incident-id="suspicious_bomb"]').click();
+await bombPage.getByRole("button", { name: /FIX 초상화/ }).click();
+await bombPage.getByRole("button", { name: /^폭탄 해체/ }).click();
+const bombGame = bombPage.locator('[data-bomb-defusal="suspicious_bomb"]');
+await bombGame.waitFor({ state: "visible", timeout: 12_000 });
+assert.equal(await bombPage.locator('[data-safety-quiz="suspicious_bomb"]').count(), 0);
+await bombPage.waitForFunction(() => document.querySelector('[data-bomb-defusal="suspicious_bomb"]')?.getAttribute("data-bomb-hint-source") === "openai");
+assert.equal(bombHintRequests.length, 1);
+assert.equal(["red", "blue"].includes(bombHintRequests[0].correctWire), true);
+assert.equal(await bombGame.locator('img[alt="본부 AI 루나"]').evaluate((image) => image.complete && image.naturalWidth === 256), true);
+const bombBounds = await bombGame.boundingBox();
+assert.equal(Boolean(bombBounds && bombBounds.x >= 0 && bombBounds.y >= 0 && bombBounds.x + bombBounds.width <= 1280 && bombBounds.y + bombBounds.height <= 720), true);
+await bombPage.screenshot({ path: "/tmp/pixel-panic-bomb-defusal.png" });
+const firstCorrectWire = await bombGame.getAttribute("data-qa-correct-wire");
+const firstWrongWire = firstCorrectWire === "red" ? "blue" : "red";
+await bombGame.locator(`[data-bomb-wire="${firstWrongWire}"]`).click();
+await bombPage.waitForFunction(() => document.querySelector('[data-bomb-defusal="suspicious_bomb"]')?.getAttribute("data-bomb-status") === "failure");
+await bombGame.waitFor({ state: "hidden", timeout: 3_000 });
+assert.notEqual(await bombPage.evaluate(() => window.__PIXEL_PANIC_DEBUG__?.game.incidents.suspicious_bomb.status), "resolved");
+
+await bombPage.locator('[data-incident-id="suspicious_bomb"]').click();
+await bombPage.getByRole("button", { name: /FIX 초상화/ }).click();
+await bombPage.getByRole("button", { name: /^폭탄 해체/ }).click();
+await bombGame.waitFor({ state: "visible", timeout: 12_000 });
+await bombPage.waitForFunction(() => document.querySelector('[data-bomb-defusal="suspicious_bomb"]')?.getAttribute("data-bomb-hint-source") === "openai");
+const retryCorrectWire = await bombGame.getAttribute("data-qa-correct-wire");
+assert.equal(retryCorrectWire === "red" || retryCorrectWire === "blue", true);
+await bombGame.locator(`[data-bomb-wire="${retryCorrectWire}"]`).click();
+await bombPage.waitForFunction(() => document.querySelector('[data-bomb-defusal="suspicious_bomb"]')?.getAttribute("data-bomb-status") === "success");
+await bombPage.waitForTimeout(300);
+await bombPage.screenshot({ path: "/tmp/pixel-panic-bomb-defusal-success.png" });
+await bombGame.waitFor({ state: "hidden", timeout: 3_000 });
+await bombPage.waitForFunction(() => window.__PIXEL_PANIC_DEBUG__?.game.incidents.suspicious_bomb.status === "resolved");
+await bombPage.close();
+
 const resultPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const resultErrors = collectPageErrors(resultPage);
 const newsRequests = [];
@@ -227,7 +270,7 @@ const newsButton = resultPage.getByRole("button", { name: "AI 마을 뉴스" });
 await newsButton.waitFor();
 assert.equal(newsRequests.length >= 1, true);
 assert.equal(newsRequests.at(-1).status, "success");
-assert.equal(newsRequests.at(-1).resolvedIncidents.length, 10);
+assert.equal(newsRequests.at(-1).resolvedIncidents.length, 11);
 await newsButton.click();
 const newsDialog = resultPage.getByRole("dialog", { name: /구조 로봇 협동/ });
 await newsDialog.waitFor();
@@ -241,6 +284,6 @@ await resultPage.screenshot({ path: "/tmp/pixel-panic-ai-news.png" });
 await resultPage.getByRole("button", { name: "AI 마을 뉴스 닫기" }).click();
 await resultPage.close();
 
-assert.deepEqual([...titleErrors, ...errors, ...catErrors, ...resultErrors], []);
+assert.deepEqual([...titleErrors, ...errors, ...catErrors, ...bombErrors, ...resultErrors], []);
 await browser.close();
-console.log("Responsive smoke PASSED: rooftop cat catch mini game, full-height map, arrival-triggered AI safety quiz, AI result news/interview, step-by-step road routes and exact robot targets, title/mission audio, 9 rotating maps, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");
+console.log("Responsive smoke PASSED: rooftop cat catch and AI-radio bomb-defusal mini games, full-height map, arrival-triggered AI safety quiz, AI result news/interview, step-by-step road routes and exact robot targets, title/mission audio, 9 rotating maps, NPC AI speech, robot action pop-up, map drag, Phaser, manifest, scaling");

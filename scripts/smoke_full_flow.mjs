@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { collectPageErrors, fulfillDialogue, fulfillQuiz, performAction } from "./qa_helpers.mjs";
+import { collectPageErrors, fulfillBombHint, fulfillDialogue, fulfillQuiz, performAction } from "./qa_helpers.mjs";
 
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3100";
 const browser = await chromium.launch({ headless: true });
@@ -8,6 +8,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = collectPageErrors(page);
 await page.route("**/api/dialogue", (route) => fulfillDialogue(route, "openai"));
 await page.route("**/api/quiz", (route) => fulfillQuiz(route, "openai"));
+await page.route("**/api/bomb-hint", (route) => fulfillBombHint(route, "openai"));
 await page.goto(`${baseUrl}/?screen=play&skipBriefing=1&qaAll=1&tickScale=4`, { waitUntil: "networkidle" });
 await page.locator("canvas").waitFor();
 
@@ -25,11 +26,12 @@ const actions = [
   { incidentName: "민가 확산 화재", incidentId: "house_fire", robot: "AQUA", actionName: "주변 방화 처리", actionId: "firebreak" },
   { incidentName: "옥상 고양이 고립", incidentId: "cat_trapped", robot: "BUDDY", actionName: "고양이 구조", actionId: "rescue_cat" },
   { incidentName: "동쪽 주민 고립", incidentId: "east_residents", robot: "BUDDY", actionName: "고립 주민 구조", actionId: "rescue_residents" },
+  { incidentName: "광장 폭탄 위협", incidentId: "suspicious_bomb", robot: "FIX", actionName: "폭탄 해체", actionId: "defuse_bomb" },
 ];
 for (const action of actions) await performAction(page, action);
 
 await page.getByText("구조 작전 완료!").waitFor({ timeout: 8_000 });
-await page.getByText("10/10", { exact: true }).waitFor();
+await page.getByText("11/11", { exact: true }).waitFor();
 assert.match(await page.locator(".result-stats").innerText(), /발견 콤보\s*5\/5/);
 assert.match(await page.locator(".result-stats").innerText(), /구조 주민\s*9명/);
 await page.getByRole("button", { name: "다시 출동" }).click();
@@ -37,4 +39,4 @@ await page.getByText("WAVE 1", { exact: true }).waitFor();
 assert.deepEqual(errors, []);
 
 await browser.close();
-console.log("Click full-flow PASSED: 10 incidents → 5 combos → result → retry");
+console.log("Click full-flow PASSED: 11 incidents → 2 mini games → 5 combos → result → retry");

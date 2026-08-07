@@ -1,6 +1,6 @@
 export const NEWS_FINISH_REASONS = ["completed", "timeout", "village_lost", "abandoned"] as const;
 export const NEWS_GRADES = ["S", "A", "B", "C"] as const;
-export const NEWS_INCIDENT_LABELS = ["전기 합선", "빵집 화재", "가스 폭발 위험", "발전소 침수", "하천 범람", "다리 파손", "서쪽 주민 고립", "민가 확산 화재", "옥상 고양이 고립", "동쪽 주민 고립"] as const;
+export const NEWS_INCIDENT_LABELS = ["전기 합선", "빵집 화재", "가스 폭발 위험", "발전소 침수", "하천 범람", "다리 파손", "서쪽 주민 고립", "민가 확산 화재", "옥상 고양이 고립", "동쪽 주민 고립", "광장 폭탄 위협"] as const;
 export const NEWS_COMBO_LABELS = ["POWER CUT → SPLASH", "SAFE EVAC TRINITY", "PARTS EXPRESS", "RESCUE ROUTE OPEN", "FIREBREAK WALL"] as const;
 export const NEWS_INTERVIEWEES = {
   npc_boram: { name: "보람", role: "빵집 이웃 주민", traits: "씩씩하고 이웃을 먼저 걱정하며 짧고 힘 있게 말함" },

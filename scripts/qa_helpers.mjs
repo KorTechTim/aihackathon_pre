@@ -64,6 +64,23 @@ export async function fulfillNews(route, source = "fallback") {
   });
 }
 
+export async function fulfillBombHint(route, source = "fallback") {
+  const request = route.request().postDataJSON();
+  const hint = request.correctWire === "red"
+    ? "소방차 경광등처럼 뜨거운 색 신호가 오늘의 안전 회로예요!"
+    : "AQUA의 물빛처럼 차가운 색 신호가 안정 주파수에 맞아요!";
+  await route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      hint,
+      source,
+      requestId: "qa-bomb-hint-request",
+      ...(source === "fallback" ? { degradedReason: "OCI_UNAVAILABLE" } : {}),
+    }),
+  });
+}
+
 export async function waitForDebug(page, predicate, argument, timeout = 8_000) {
   await page.waitForFunction(predicate, argument, { timeout });
 }
@@ -86,6 +103,18 @@ export async function performAction(page, { incidentId, robot, actionName, actio
     await page.waitForFunction(() => document.querySelector('[data-cat-rescue="cat_trapped"]')?.getAttribute("data-cat-phase") === "success", undefined, { timeout: 3_000 });
     await miniGame.waitFor({ state: "hidden", timeout: 3_000 });
     await waitForDebug(page, () => window.__PIXEL_PANIC_DEBUG__?.game.incidents.cat_trapped.status === "resolved", undefined, 3_000);
+    return;
+  }
+  if (incidentId === "suspicious_bomb" && actionId === "defuse_bomb") {
+    const miniGame = page.locator('[data-bomb-defusal="suspicious_bomb"]');
+    await miniGame.waitFor({ state: "visible", timeout: 12_000 });
+    await page.waitForFunction(() => document.querySelector('[data-bomb-defusal="suspicious_bomb"]')?.getAttribute("data-bomb-hint-source") !== "loading", undefined, { timeout: 8_000 });
+    const requestedWire = await miniGame.getAttribute("data-qa-correct-wire");
+    if (requestedWire !== "red" && requestedWire !== "blue") throw new Error("bomb wire answer is unavailable");
+    await miniGame.locator(`[data-bomb-wire="${requestedWire}"]`).click();
+    await page.waitForFunction(() => document.querySelector('[data-bomb-defusal="suspicious_bomb"]')?.getAttribute("data-bomb-status") === "success", undefined, { timeout: 2_000 });
+    await miniGame.waitFor({ state: "hidden", timeout: 3_000 });
+    await waitForDebug(page, () => window.__PIXEL_PANIC_DEBUG__?.game.incidents.suspicious_bomb.status === "resolved", undefined, 3_000);
     return;
   }
   const quiz = page.locator(`[data-safety-quiz="${incidentId}"]`);

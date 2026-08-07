@@ -12,7 +12,7 @@ const config: AppConfig = {
 };
 const input: NewsInput = {
   status: "success", finishReason: "completed", grade: "S", score: 2300, villagePreservation: 94, rescuedResidents: 9,
-  resolvedIncidents: ["전기 합선", "빵집 화재", "가스 폭발 위험", "발전소 침수", "하천 범람", "다리 파손", "서쪽 주민 고립", "민가 확산 화재", "옥상 고양이 고립", "동쪽 주민 고립"],
+  resolvedIncidents: ["전기 합선", "빵집 화재", "가스 폭발 위험", "발전소 침수", "하천 범람", "다리 파손", "서쪽 주민 고립", "민가 확산 화재", "옥상 고양이 고립", "동쪽 주민 고립", "광장 폭탄 위협"],
   unresolvedIncidents: [], comboLabels: ["POWER CUT → SPLASH"], maxCombo: 1, remainingSeconds: 24, catRescued: true,
   preventedSpreads: 2, actionCount: 13, intervieweeId: "npc_hana", intervieweeName: "하나", intervieweeRole: "구조 자원봉사자",
   intervieweeTraits: "침착하고 다정하며 주민이 따라 하기 쉬운 안전 행동을 말함", language: "ko",

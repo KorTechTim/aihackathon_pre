@@ -7,13 +7,15 @@ import { registerHealthRoute } from "./routes/health.js";
 import { registerDialogueRoute } from "./routes/dialogue.js";
 import { registerQuizRoute } from "./routes/quiz.js";
 import { registerNewsRoute } from "./routes/news.js";
+import { registerBombHintRoute } from "./routes/bomb-hint.js";
 import { registerPlanRoute, type AuditRecord } from "./routes/plan.js";
 import { createOpenAIDialogueWriter, type DialogueWriter } from "./services/openai-dialogue.js";
 import { createOpenAIQuizWriter, type QuizWriter } from "./services/openai-quiz.js";
 import { createOpenAINewsWriter, type NewsWriter } from "./services/openai-news.js";
+import { createOpenAIBombHintWriter, type BombHintWriter } from "./services/openai-bomb-hint.js";
 import { createOpenAIPlanner, type RescuePlanner } from "./services/openai-planner.js";
 
-export async function buildServer(options: { config?: AppConfig; planner?: RescuePlanner; dialogueWriter?: DialogueWriter; quizWriter?: QuizWriter; newsWriter?: NewsWriter; audit?: (record: AuditRecord) => void; logger?: boolean } = {}): Promise<FastifyInstance> {
+export async function buildServer(options: { config?: AppConfig; planner?: RescuePlanner; dialogueWriter?: DialogueWriter; quizWriter?: QuizWriter; newsWriter?: NewsWriter; bombHintWriter?: BombHintWriter; audit?: (record: AuditRecord) => void; logger?: boolean } = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig();
   const app = Fastify({
     logger: options.logger ?? config.nodeEnv !== "test",
@@ -33,6 +35,7 @@ export async function buildServer(options: { config?: AppConfig; planner?: Rescu
   registerDialogueRoute(app, { config, writer: options.dialogueWriter ?? createOpenAIDialogueWriter(config) });
   registerQuizRoute(app, { config, writer: options.quizWriter ?? createOpenAIQuizWriter(config) });
   registerNewsRoute(app, { config, writer: options.newsWriter ?? createOpenAINewsWriter(config) });
+  registerBombHintRoute(app, { config, writer: options.bombHintWriter ?? createOpenAIBombHintWriter(config) });
   return app;
 }
 

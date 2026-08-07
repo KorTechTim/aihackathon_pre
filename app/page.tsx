@@ -6,6 +6,14 @@ import { PixelButton } from "@/components/PixelButton";
 import { StageViewport } from "@/components/StageViewport";
 import { PixelPanicAudio, type PixelPanicSfx } from "@/lib/audio-engine";
 import {
+  buildBombHintRequest,
+  fallbackBombHint,
+  normalizeBombHint,
+  pickBombWire,
+  type BombHintResponse,
+  type BombWire,
+} from "@/lib/bomb-defusal";
+import {
   CAT_FALL_MS,
   CAT_ROBOT_STEP,
   CAT_WARNING_MS,
@@ -47,10 +55,12 @@ import {
   getResolvedCount,
   getVisibleIncidents,
   failCatRescueMinigame,
+  failBombDefusalMinigame,
   selectIncident,
   selectRobot,
   resolveActionWithSafetyQuiz,
   resolveCatRescueMinigame,
+  resolveBombDefusalMinigame,
   startAction,
   type ActionId,
   type ActionDefinition,
@@ -83,6 +93,15 @@ type CatRescueView = {
   seed: number;
 };
 type CatRescuePhase = "roaming" | "warning" | "falling" | "success" | "failure";
+type BombDefusalView = {
+  pendingAction: { incidentId: "suspicious_bomb"; actionId: "defuse_bomb" };
+  correctWire: BombWire;
+  hint: BombHintResponse;
+  attempt: number;
+  loading: boolean;
+  selectedWire: BombWire | null;
+  status: "armed" | "success" | "failure";
+};
 type MapDragState = { pointerId: number; startClientX: number; startOffset: number; renderedWidth: number };
 
 declare global {
@@ -112,6 +131,8 @@ const essentialAssets = [
   `${ASSET}/ui/screens/pp_ui_screen_result_success_final.webp`,
   `${ASSET}/ui/screens/pp_ui_screen_result_fail_final.webp`,
   `${ASSET}/world/maps/pp_stage_01_preview.webp`,
+  `${ASSET}/ui/minigames/pp_ui_bomb_defusal_case.png`,
+  `${ASSET}/ui/portraits/pp_ui_portrait_hq_ai.png`,
   ...ROBOT_IDS.flatMap((robot) => ["ready", "busy"].map((state) => `${ASSET}/ui/portraits/pp_ui_portrait_${robot}_${state}.png`)),
 ];
 
@@ -149,6 +170,7 @@ export default function Home() {
   const [dialogue, setDialogue] = useState<DialogueView | null>(null);
   const [safetyQuiz, setSafetyQuiz] = useState<SafetyQuizView | null>(null);
   const [catRescue, setCatRescue] = useState<CatRescueView | null>(null);
+  const [bombDefusal, setBombDefusal] = useState<BombDefusalView | null>(null);
   const [arrivedMissionQueue, setArrivedMissionQueue] = useState<ActiveRobotMission[]>([]);
   const [npcSpeech, setNpcSpeech] = useState<NpcSpeech | null>(null);
   const [actionPopupOpen, setActionPopupOpen] = useState(false);
@@ -157,9 +179,12 @@ export default function Home() {
   const [mapDragging, setMapDragging] = useState(false);
   const dialogueAbortRef = useRef<AbortController | null>(null);
   const quizAbortRef = useRef<AbortController | null>(null);
+  const bombHintAbortRef = useRef<AbortController | null>(null);
   const askedQuizQuestionsRef = useRef<string[]>([]);
   const quizDispatchTimerRef = useRef<number | null>(null);
   const catRescueAttemptRef = useRef(0);
+  const bombDefusalAttemptRef = useRef(0);
+  const bombOutcomeTimerRef = useRef<number | null>(null);
   const npcDialogueAbortRef = useRef<AbortController | null>(null);
   const npcDialogueHistoryRef = useRef<string[]>([]);
   const npcSpeechTimerRef = useRef<number | null>(null);
@@ -238,7 +263,7 @@ export default function Home() {
   }, [loadAttempt]);
 
   useEffect(() => {
-    if (screen !== "play" || paused || safetyQuiz || catRescue || game.status !== "playing") {
+    if (screen !== "play" || paused || safetyQuiz || catRescue || bombDefusal || game.status !== "playing") {
       lastTickRef.current = null;
       return;
     }
@@ -250,7 +275,7 @@ export default function Home() {
       setGame((current) => advanceGame(current, delta, (dialogue ? 0.7 : 1) * tickScale));
     }, 250);
     return () => window.clearInterval(timer);
-  }, [catRescue, dialogue, game.status, paused, safetyQuiz, screen]);
+  }, [bombDefusal, catRescue, dialogue, game.status, paused, safetyQuiz, screen]);
 
   useEffect(() => {
     if (screen !== "play" || game.status === "playing") return;
@@ -330,10 +355,12 @@ export default function Home() {
   useEffect(() => () => {
     dialogueAbortRef.current?.abort();
     quizAbortRef.current?.abort();
+    bombHintAbortRef.current?.abort();
     npcDialogueAbortRef.current?.abort();
     npcDialogueAbortRef.current = null;
     if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
     if (quizDispatchTimerRef.current !== null) window.clearTimeout(quizDispatchTimerRef.current);
+    if (bombOutcomeTimerRef.current !== null) window.clearTimeout(bombOutcomeTimerRef.current);
     if (resultTimerRef.current !== null) window.clearTimeout(resultTimerRef.current);
     audioRef.current?.dispose();
   }, []);
@@ -341,13 +368,16 @@ export default function Home() {
   const startGame = useCallback(() => {
     dialogueAbortRef.current?.abort();
     quizAbortRef.current?.abort();
+    bombHintAbortRef.current?.abort();
     npcDialogueAbortRef.current?.abort();
     npcDialogueAbortRef.current = null;
     if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
     if (quizDispatchTimerRef.current !== null) window.clearTimeout(quizDispatchTimerRef.current);
+    if (bombOutcomeTimerRef.current !== null) window.clearTimeout(bombOutcomeTimerRef.current);
     setDialogue(null);
     setSafetyQuiz(null);
     setCatRescue(null);
+    setBombDefusal(null);
     setArrivedMissionQueue([]);
     setNpcSpeech(null);
     setActionPopupOpen(false);
@@ -358,6 +388,7 @@ export default function Home() {
     setMapDragging(false);
     askedQuizQuestionsRef.current = [];
     catRescueAttemptRef.current = 0;
+    bombDefusalAttemptRef.current = 0;
     npcDialogueHistoryRef.current = [];
     mapDragRef.current = null;
     const initial = createInitialGame();
@@ -400,7 +431,7 @@ export default function Home() {
   }, [game, playSound]);
 
   const talkToNpc = useCallback((npcId: NpcDialogueId) => {
-    if (paused || dialogue || safetyQuiz || catRescue || showHelp) return;
+    if (paused || dialogue || safetyQuiz || catRescue || bombDefusal || showHelp) return;
     const npc = NPC_DIALOGUES[npcId];
     const excludedDialogues = [...npcDialogueHistoryRef.current];
     const dialogueSequence = excludedDialogues.length + 1;
@@ -439,7 +470,7 @@ export default function Home() {
       }
       showSpeech(data.dialogue, data.source);
     }).catch(() => showSpeech(localFallback, "fallback")).finally(() => window.clearTimeout(timeout));
-  }, [catRescue, dialogue, game, paused, playSound, safetyQuiz, showHelp]);
+  }, [bombDefusal, catRescue, dialogue, game, paused, playSound, safetyQuiz, showHelp]);
 
   const closeNpcSpeech = useCallback(() => {
     npcDialogueAbortRef.current?.abort();
@@ -507,13 +538,54 @@ export default function Home() {
     });
   }, [closeNpcSpeech]);
 
+  const openBombDefusal = useCallback((currentGame: RescueGameState) => {
+    const pending = currentGame.robots.fix.pendingAction;
+    if (!pending || pending.incidentId !== "suspicious_bomb" || pending.actionId !== "defuse_bomb") return;
+    bombDefusalAttemptRef.current += 1;
+    const attempt = bombDefusalAttemptRef.current;
+    const correctWire = pickBombWire(currentGame.seed, attempt);
+    const localFallback = fallbackBombHint(correctWire, attempt);
+    bombHintAbortRef.current?.abort();
+    const controller = new AbortController();
+    bombHintAbortRef.current = controller;
+    setActionPopupOpen(false);
+    closeNpcSpeech();
+    playSound("wave");
+    setBombDefusal({
+      pendingAction: { incidentId: "suspicious_bomb", actionId: "defuse_bomb" },
+      correctWire,
+      hint: localFallback,
+      attempt,
+      loading: true,
+      selectedWire: null,
+      status: "armed",
+    });
+    const timeout = window.setTimeout(() => controller.abort(), 5_200);
+    void fetch("/api/bomb-hint", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildBombHintRequest(correctWire, attempt, currentGame.incidents.suspicious_bomb.severity)),
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) return localFallback;
+      const data = await response.json() as { source?: unknown };
+      const normalized = normalizeBombHint(data);
+      if (!normalized || data.source !== "openai" && data.source !== "fallback") return localFallback;
+      return { ...normalized, source: data.source } as BombHintResponse;
+    }).catch(() => localFallback).then((hint) => {
+      if (bombHintAbortRef.current !== controller) return;
+      setBombDefusal((current) => current?.attempt === attempt ? { ...current, hint, loading: false } : current);
+    }).finally(() => window.clearTimeout(timeout));
+  }, [closeNpcSpeech, playSound]);
+
   useEffect(() => {
-    if (screen !== "play" || paused || showHelp || safetyQuiz || catRescue || dialogue || arrivedMissionQueue.length === 0) return;
+    if (screen !== "play" || paused || showHelp || safetyQuiz || catRescue || bombDefusal || dialogue || arrivedMissionQueue.length === 0) return;
     const mission = arrivedMissionQueue[0];
     setArrivedMissionQueue((current) => current.slice(1));
     if (mission.incidentId === "cat_trapped" && mission.actionId === "rescue_cat") openCatRescue(game);
+    else if (mission.incidentId === "suspicious_bomb" && mission.actionId === "defuse_bomb") openBombDefusal(game);
     else openSafetyQuiz(mission.incidentId, mission.actionId, game);
-  }, [arrivedMissionQueue, catRescue, dialogue, game, openCatRescue, openSafetyQuiz, paused, safetyQuiz, screen, showHelp]);
+  }, [arrivedMissionQueue, bombDefusal, catRescue, dialogue, game, openBombDefusal, openCatRescue, openSafetyQuiz, paused, safetyQuiz, screen, showHelp]);
 
   const requestAction = useCallback((actionId: ActionId) => {
     const incidentId = game.selectedIncidentId;
@@ -582,6 +654,26 @@ export default function Home() {
     playSound(caught ? "resolve" : "failure");
     setToast(caught ? "쿠션 캐치 성공! 고양이를 안전하게 구조했습니다." : "쿠션을 놓쳤습니다. 고양이 구조에 다시 도전하세요.");
   }, [playSound]);
+
+  const cutBombWire = useCallback((wire: BombWire) => {
+    if (!bombDefusal || bombDefusal.loading || bombDefusal.status !== "armed") return;
+    const success = wire === bombDefusal.correctWire;
+    bombHintAbortRef.current?.abort();
+    setBombDefusal((current) => current ? { ...current, selectedWire: wire, status: success ? "success" : "failure" } : current);
+    playSound(success ? "success" : "failure");
+    if (bombOutcomeTimerRef.current !== null) window.clearTimeout(bombOutcomeTimerRef.current);
+    bombOutcomeTimerRef.current = window.setTimeout(() => {
+      setGame((current) => {
+        const result = success ? resolveBombDefusalMinigame(current) : failBombDefusalMinigame(current);
+        if (!result.ok) setToast(result.error ?? "폭탄 해체 결과를 반영할 수 없습니다.");
+        return result.state;
+      });
+      setBombDefusal(null);
+      if (success) playSound("resolve");
+      setToast(success ? "본부 AI 힌트 판독 성공! 폭탄을 안전하게 해체했습니다." : "잘못된 회로였습니다. 안전 장치가 작동했으니 다시 도전하세요.");
+      bombOutcomeTimerRef.current = null;
+    }, 1_050);
+  }, [bombDefusal, playSound]);
 
   const toggleSound = useCallback(() => {
     const next = !soundOn;
@@ -652,13 +744,13 @@ export default function Home() {
   }, [getAudio, playSound, screen]);
 
   const beginMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || paused || dialogue || safetyQuiz || catRescue || showHelp) return;
+    if (event.button !== 0 || paused || dialogue || safetyQuiz || catRescue || bombDefusal || showHelp) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     mapDragRef.current = { pointerId: event.pointerId, startClientX: event.clientX, startOffset: mapPanX, renderedWidth: bounds.width };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
     setMapDragging(true);
-  }, [catRescue, dialogue, mapPanX, paused, safetyQuiz, showHelp]);
+  }, [bombDefusal, catRescue, dialogue, mapPanX, paused, safetyQuiz, showHelp]);
 
   const moveMapDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = mapDragRef.current;
@@ -723,6 +815,7 @@ export default function Home() {
         {dialogue && screen === "play" && <DialogueModal view={dialogue} incidentPosition={stageMap.incidentPositions[dialogue.pendingAction.incidentId]} mapPanX={mapPanX} onChoose={chooseDialogue} />}
         {safetyQuiz && screen === "play" && <SafetyQuizModal view={safetyQuiz} onAnswer={answerSafetyQuiz} />}
         {catRescue && screen === "play" && <CatRescueMinigameModal view={catRescue} onOutcome={finishCatRescue} onWarning={() => playSound("wave")} />}
+        {bombDefusal && screen === "play" && <BombDefusalMinigameModal view={bombDefusal} onCut={cutBombWire} />}
         {screen === "play" && (
           <>
             <div
@@ -1167,6 +1260,61 @@ function CatRescueMinigameModal({ view, onOutcome, onWarning }: { view: CatRescu
             onPointerLeave={stopHolding}
           >▶</button>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function BombDefusalMinigameModal({ view, onCut }: { view: BombDefusalView; onCut: (wire: BombWire) => void }) {
+  const statusLabel = view.loading ? "AI LINK" : view.status === "armed" ? "SIGNAL READY" : view.status === "success" ? "SAFE" : "RETRY";
+  return (
+    <div className="modal-backdrop bomb-defusal-backdrop" role="presentation">
+      <section
+        className={`bomb-defusal-card pixel-alert ${view.status}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bomb-defusal-title"
+        data-bomb-defusal="suspicious_bomb"
+        data-bomb-status={view.status}
+        data-bomb-hint-source={view.loading ? "loading" : view.hint.source}
+        data-qa-correct-wire={debugEnabled ? view.correctWire : undefined}
+      >
+        <header>
+          <img src={`${ASSET}/ui/icons/pp_ui_icon_incident_bomb.png`} alt="" />
+          <span><small>DEFUSAL MINI GAME · FIX 현장 도착</small><h2 id="bomb-defusal-title">본부 AI 무전 · 폭탄 해체</h2></span>
+          <b className={`${view.loading ? "loading" : ""} ${view.status}`}>{statusLabel}</b>
+        </header>
+        <div className="bomb-radio-row" aria-live="polite">
+          <img src={`${ASSET}/ui/portraits/pp_ui_portrait_hq_ai.png`} alt="본부 AI 루나" />
+          <div className={`bomb-radio-bubble ${view.loading ? "loading" : ""}`}>
+            <span><strong>본부 AI · 루나</strong><em className={view.loading ? "loading" : view.hint.source}>{view.loading ? "주파수 분석 중" : view.hint.source === "openai" ? "GPT LIVE" : "LOCAL SAFE"}</em></span>
+            <p>{view.loading ? "현장 회로 신호를 읽고 있어요… 잠시만 기다려주세요." : view.hint.hint}</p>
+          </div>
+        </div>
+        <div className={`bomb-defusal-field ${view.status}`}>
+          <span className="bomb-signal-pulse" aria-hidden="true" />
+          {(["red", "blue"] as const).map((wire) => (
+            <button
+              key={wire}
+              type="button"
+              className={`bomb-wire ${wire} ${view.selectedWire === wire ? "selected is-cut" : ""}`}
+              disabled={view.loading || view.status !== "armed"}
+              data-bomb-wire={wire}
+              aria-label={`${wire === "red" ? "빨간" : "파란"} 전선 자르기`}
+              onClick={() => onCut(wire)}
+            >
+              <i aria-hidden="true" />
+              <span><b>✂</b>{wire === "red" ? "빨간선" : "파란선"}</span>
+            </button>
+          ))}
+          {view.status !== "armed" && (
+            <div className={`bomb-defusal-result ${view.status}`} role="status">
+              <strong>{view.status === "success" ? "CIRCUIT SAFE!" : "WRONG WIRE!"}</strong>
+              <span>{view.status === "success" ? "본부 AI와 주파수가 일치했습니다" : "안전 장치 작동 · 폭발 없이 재시도합니다"}</span>
+            </div>
+          )}
+        </div>
+        <footer><strong>무전 힌트를 해독하고 전선을 마우스로 클릭하세요</strong><span>시도 {view.attempt} · 정답은 매번 달라집니다</span></footer>
       </section>
     </div>
   );

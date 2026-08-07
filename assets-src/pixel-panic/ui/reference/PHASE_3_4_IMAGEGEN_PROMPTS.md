@@ -60,3 +60,29 @@ Edit the supplied pixel-art scene so the building has a complete body below the 
 - 후처리: 초록 크로마키 제거 후 투명 RGBA 240×240으로 축소
 
 Create one front-facing full-body BUDDY rescue robot in a catching pose: a cute coral-red and pink compact robot with a cyan digital face, heart-shaped chest light, tiny emergency beacon, sturdy short legs, and two long articulated arms spread wide and raised. Its open hands support a large fluffy rectangular rescue pillow directly above its head, ready to catch a falling cat. Polished premium 16-bit pixel art with crisp stepped edges and a chunky readable silhouette. Cream pillow with pale pink stitched stripes and thick soft corners. Exactly one centered character on a perfectly flat solid #00FF00 chroma-key background. No cat, other character, ground, shadow, text, logo, border or watermark.
+
+## 본부 AI 무전 폭탄 해체 미니게임
+
+- 생성일: 2026-08-07
+- 생성 도구: OpenAI ImageGen 기본 내장 모드
+
+### 본부 AI 루나 아바타
+
+- 최종 에셋: `public/assets/pixel-panic/ui/portraits/pp_ui_portrait_hq_ai.png`
+- 후처리: 256×256으로 축소
+
+Create a friendly feminine artificial-intelligence dispatcher avatar who speaks to rescue robots from headquarters. An adult-coded synthetic female AI face and upper shoulders, confident and warm expression, short silver-blue holographic hair, cyan eyes, compact communications headset with microphone, subtle circuit-light details at the temples. Clearly an AI avatar rather than a real person. Premium cohesive 16-bit pixel art with crisp stepped pixels and a chunky readable silhouette. Centered front-facing bust inside a square dark navy command-center portrait panel with generous safe padding. Cool cyan holographic rim light, deep navy, cyan, pale silver and tiny coral alert accents. Exactly one avatar, no body below shoulders, no text, letters, numbers, logo, UI buttons, watermark, weapons, or photorealism.
+
+### 폭탄 해체 장치 배경
+
+- 최종 에셋: `public/assets/pixel-panic/ui/minigames/pp_ui_bomb_defusal_case.png`
+- 후처리: 팝업 배경 규격 900×520으로 축소
+
+Create a dramatic but family-friendly fictional bomb-defusal device mounted inside an open dark navy emergency equipment case. Close straight-on view on a rescue workbench, with a chunky rectangular fictional timer module, harmless-looking circuit blocks, and two clearly separated empty cable sockets in the lower left and lower right where interactive red and blue wires will be overlaid later. Do not draw any colored wires between them. Premium cohesive 16-bit pixel-art game background with centered symmetrical composition, cyan instrument glow and restrained coral warning lights. Fictional non-instructional game prop only; no realistic explosive materials or real construction details; no characters, hands, tools, text, letters, numbers, countdown digits, logos, watermarks, UI buttons, or border outside the case.
+
+### 폭탄 재난 아이콘
+
+- 최종 에셋: `public/assets/pixel-panic/ui/icons/pp_ui_icon_incident_bomb.png`
+- 후처리: 초록 크로마키 제거 후 투명 RGBA 64×64로 축소
+
+Create one compact fictional bomb-alert icon: a chunky dark navy circular device with a tiny amber warning light and two short clearly visible wires, one red and one blue, curling upward. Premium 16-bit pixel art with crisp stepped edges, thick dark outline and a simple readable silhouette at 48×48 pixels. Exactly one centered icon with generous padding on a perfectly flat solid #00FF00 chroma-key background. Do not use green in the subject. No text, letters, numbers, skull, realistic explosive material, logo, border, watermark, gradient or texture in the background.

@@ -118,6 +118,12 @@ export const FALLBACK_SAFETY_QUIZZES: Record<IncidentId, SafetyQuizContent> = {
     "b",
     "질서 있게 안내를 따르고 도움이 필요한 주민을 함께 살피면 추가 사고를 줄일 수 있습니다.",
   ),
+  suspicious_bomb: quiz(
+    "수상한 장치를 발견했을 때 일반 주민이 가장 먼저 해야 할 행동은 무엇일까요?",
+    ["가까이 가서 선을 확인한다", "주변 접근을 막고 안전거리를 둔 뒤 신고한다", "장치를 다른 곳으로 옮긴다"],
+    "b",
+    "수상한 장치는 만지거나 옮기지 말고 안전거리를 확보한 뒤 전문 인력에게 알려야 합니다.",
+  ),
 };
 
 const ALTERNATE_FALLBACK_SAFETY_QUIZZES: Record<IncidentId, SafetyQuizContent> = {
@@ -181,6 +187,12 @@ const ALTERNATE_FALLBACK_SAFETY_QUIZZES: Record<IncidentId, SafetyQuizContent> =
     "b",
     "대피 전후 인원을 대조해야 현장에 남거나 이동 중 이탈한 주민을 빠르게 확인할 수 있습니다.",
   ),
+  suspicious_bomb: quiz(
+    "수상한 장치 주변 통제선이 필요한 가장 중요한 이유는 무엇일까요?",
+    ["구경하는 사람의 접근과 추가 위험을 막기 위해서", "장치 사진을 더 잘 찍기 위해서", "주변 차량을 빨리 통과시키기 위해서"],
+    "a",
+    "전문 인력이 확인하기 전까지 주변 접근을 통제해야 주민과 구조대의 추가 위험을 줄일 수 있습니다.",
+  ),
 };
 
 const FALLBACK_SAFETY_QUIZZES_BY_ACTION: Partial<Record<IncidentId, Partial<Record<ActionId, SafetyQuizContent>>>> = {
@@ -236,6 +248,7 @@ const FALLBACK_SAFETY_QUIZZES_BY_ACTION: Partial<Record<IncidentId, Partial<Reco
   },
   cat_trapped: { rescue_cat: FALLBACK_SAFETY_QUIZZES.cat_trapped },
   east_residents: { rescue_residents: FALLBACK_SAFETY_QUIZZES.east_residents },
+  suspicious_bomb: { defuse_bomb: FALLBACK_SAFETY_QUIZZES.suspicious_bomb },
 };
 
 function cleanText(value: unknown, maximum: number): string | null {

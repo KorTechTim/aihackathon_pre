@@ -38,7 +38,7 @@ test("재출동할 때 시작 맵이 이동하며 아홉 맵을 순환한다", (
   assert.equal(getStageMap(Number.NaN, 1).id, "day");
 });
 
-test("모든 맵은 NPC 4명과 사고 10개의 전용 좌표를 제공한다", () => {
+test("모든 맵은 NPC 4명과 사고 11개의 전용 좌표를 제공한다", () => {
   for (const map of STAGE_MAPS) {
     assert.deepEqual(Object.keys(map.npcPositions).sort(), [...NPC_DIALOGUE_IDS].sort(), map.id);
     assert.deepEqual(Object.keys(map.incidentPositions).sort(), [...INCIDENT_IDS].sort(), map.id);
