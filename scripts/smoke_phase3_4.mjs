@@ -288,6 +288,10 @@ await stagePage.evaluate(() => {
 });
 const stageNews = stagePage.locator('[data-stage-news="1"]');
 await stageNews.waitFor({ state: "visible", timeout: 3_000 });
+await stagePage.waitForFunction(() => {
+  const audio = window.__PIXEL_PANIC_DEBUG__?.audio();
+  return audio?.activeTrack === "stage-complete" && audio.musicPlaying;
+});
 await stagePage.waitForFunction(() => document.querySelector('[data-stage-news="1"]')?.getAttribute("data-news-source") === "openai");
 assert.equal(stageNewsRequests.length, 1);
 assert.equal(stageNewsRequests[0].edition, "stage");
@@ -302,6 +306,10 @@ await stagePage.waitForTimeout(500);
 assert.equal(await stagePage.evaluate(() => window.__PIXEL_PANIC_DEBUG__?.game.elapsedMs), elapsedBeforeStage, "stage news must pause the game timer");
 await stagePage.getByRole("button", { name: /WAVE 2.*폭우와 침수 출동/ }).click();
 await stagePage.locator('.game-screen[data-wave="2"][data-stage-map="harbor"]').waitFor();
+await stagePage.waitForFunction(() => {
+  const audio = window.__PIXEL_PANIC_DEBUG__?.audio();
+  return audio?.activeTrack === "mission" && audio.musicPlaying;
+});
 assert.equal(await stagePage.evaluate(() => window.__PIXEL_PANIC_DEBUG__?.game.incidents.power_flood.status), "active");
 await stagePage.close();
 

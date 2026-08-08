@@ -4,6 +4,9 @@ import {
   BGM_BASS,
   BGM_CHORDS,
   BGM_MELODY,
+  STAGE_COMPLETE_BGM_BASS,
+  STAGE_COMPLETE_BGM_CHORDS,
+  STAGE_COMPLETE_BGM_MELODY,
   TITLE_BGM_BASS,
   TITLE_BGM_CHORDS,
   TITLE_BGM_MELODY,
@@ -22,6 +25,15 @@ test("타이틀 BGM은 게임 BGM과 다른 완전한 오리지널 루프를 사
   assert.equal(TITLE_BGM_BASS.length, 8);
   assert.equal(TITLE_BGM_CHORDS.length, 4);
   assert.notDeepEqual(TITLE_BGM_MELODY, BGM_MELODY);
+});
+
+test("스테이지 뉴스 BGM은 경쾌한 별도 32스텝 마무리 루프를 사용한다", () => {
+  assert.equal(STAGE_COMPLETE_BGM_MELODY.length, 32);
+  assert.equal(STAGE_COMPLETE_BGM_BASS.length, 8);
+  assert.equal(STAGE_COMPLETE_BGM_CHORDS.length, 4);
+  assert.equal(STAGE_COMPLETE_BGM_MELODY.some((note) => note === null), true);
+  assert.notDeepEqual(STAGE_COMPLETE_BGM_MELODY, BGM_MELODY);
+  assert.notDeepEqual(STAGE_COMPLETE_BGM_MELODY, TITLE_BGM_MELODY);
 });
 
 test("MIDI 음높이를 Web Audio 주파수로 정확히 변환한다", () => {

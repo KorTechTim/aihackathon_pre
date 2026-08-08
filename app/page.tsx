@@ -345,6 +345,13 @@ export default function Home() {
   }, [getAudio, screen, soundOn]);
 
   useEffect(() => {
+    if (screen !== "play" || game.status !== "playing" || !soundOn) return;
+    const audio = getAudio();
+    if (stageTransition) void audio.startStageCompleteMusic();
+    else if (!paused) void audio.startMusic();
+  }, [game.status, getAudio, paused, screen, soundOn, stageTransition]);
+
+  useEffect(() => {
     if (screen !== "play") return;
     const audio = getAudio();
     const resolved = getResolvedCount(game);
@@ -741,9 +748,12 @@ export default function Home() {
     if (next) {
       audio.play("button");
       if (screen === "title") void audio.startTitleMusic();
-      else if (screen === "play" && !paused && game.status === "playing") void audio.startMusic();
+      else if (screen === "play" && !paused && game.status === "playing") {
+        if (stageTransition) void audio.startStageCompleteMusic();
+        else void audio.startMusic();
+      }
     }
-  }, [game.status, getAudio, paused, screen, soundOn]);
+  }, [game.status, getAudio, paused, screen, soundOn, stageTransition]);
 
   const chooseIncident = useCallback((id: IncidentId) => {
     playSound("select");
