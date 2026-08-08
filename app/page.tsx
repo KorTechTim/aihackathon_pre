@@ -536,27 +536,28 @@ export default function Home() {
     quizAbortRef.current = controller;
     setActionPopupOpen(false);
     closeNpcSpeech();
-    setSafetyQuiz({ quiz: localFallback, difficulty: quizRequest.difficulty, quizSequence, pendingAction: { incidentId, actionId }, loading: true, selectedOptionId: null, status: "answering" });
-    let settled = false;
-    const showQuiz = (quiz: SafetyQuizResponse) => {
-      if (settled || quizAbortRef.current !== controller) return;
-      settled = true;
-      quizAbortRef.current = null;
-      const latestExcludedQuestions = askedQuizQuestionsRef.current;
-      const uniqueQuiz = isSafetyQuizQuestionExcluded(quiz.question, latestExcludedQuestions)
-        ? fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions: latestExcludedQuestions, quizSequence, questionFocus: quizRequest.questionFocus, variationSeed })
-        : quiz;
-      askedQuizQuestionsRef.current = [...latestExcludedQuestions, uniqueQuiz.question].slice(-MAX_EXCLUDED_QUIZ_QUESTIONS);
+    const rememberQuestion = (question: string) => {
+      if (isSafetyQuizQuestionExcluded(question, askedQuizQuestionsRef.current)) return false;
+      askedQuizQuestionsRef.current = [...askedQuizQuestionsRef.current, question].slice(-MAX_EXCLUDED_QUIZ_QUESTIONS);
       try {
         window.localStorage.setItem(QUIZ_HISTORY_STORAGE_KEY, JSON.stringify({ sequence: quizSequenceRef.current, questions: askedQuizQuestionsRef.current }));
       } catch {}
+      return true;
+    };
+    rememberQuestion(localFallback.question);
+    setSafetyQuiz({ quiz: localFallback, difficulty: quizRequest.difficulty, quizSequence, pendingAction: { incidentId, actionId }, loading: false, selectedOptionId: null, status: "answering" });
+    const showGeneratedQuiz = (quiz: SafetyQuizResponse) => {
+      if (quizAbortRef.current !== controller) return;
+      quizAbortRef.current = null;
+      if (quiz.source !== "openai" || !rememberQuestion(quiz.question)) return;
       setSafetyQuiz((current) => current?.pendingAction.incidentId === incidentId && current.pendingAction.actionId === actionId
-        ? { ...current, quiz: uniqueQuiz, loading: false }
+        && current.status === "answering" && current.selectedOptionId === null
+        ? { ...current, quiz }
         : current);
     };
     const timeout = window.setTimeout(() => {
+      if (quizAbortRef.current === controller) quizAbortRef.current = null;
       controller.abort();
-      showQuiz(localFallback);
     }, 5_200);
     void fetch("/api/quiz", {
       method: "POST",
@@ -569,7 +570,7 @@ export default function Home() {
       const normalized = normalizeSafetyQuiz(data);
       if (!normalized || isSafetyQuizQuestionExcluded(normalized.question, excludedQuestions) || data.source !== "openai" && data.source !== "fallback") return localFallback;
       return { ...normalized, source: data.source } as SafetyQuizResponse;
-    }).catch(() => localFallback).then(showQuiz).finally(() => window.clearTimeout(timeout));
+    }).catch(() => localFallback).then(showGeneratedQuiz).finally(() => window.clearTimeout(timeout));
   }, [closeNpcSpeech, playSound]);
 
   const handleRobotArrive = useCallback((mission: ActiveRobotMission) => {
@@ -676,6 +677,8 @@ export default function Home() {
 
   const answerSafetyQuiz = useCallback((optionId: SafetyQuizOptionId) => {
     if (!safetyQuiz || safetyQuiz.loading || safetyQuiz.status === "correct") return;
+    quizAbortRef.current?.abort();
+    quizAbortRef.current = null;
     if (optionId !== safetyQuiz.quiz.correctOptionId) {
       playSound("failure");
       setSafetyQuiz((current) => current ? { ...current, selectedOptionId: optionId, status: "wrong" } : current);
