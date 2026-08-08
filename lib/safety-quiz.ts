@@ -267,6 +267,108 @@ const SAFETY_QUIZ_FOCUS_LABELS: Record<SafetyQuizFocus, string> = {
   priority: "우선순위 판단",
 };
 
+const FALLBACK_FIELD_CONDITIONS = [
+  "야간이라 시야가 좁고 주민들이 통제선 가까이에 있습니다.",
+  "비가 내려 바닥이 미끄럽고 무전 연결도 잠시 불안정합니다.",
+  "어린이와 노약자가 가까운 대피소로 이동하고 있습니다.",
+  "현장 입구 하나가 막혀 구조대와 주민의 동선이 겹칩니다.",
+  "강한 바람 때문에 위험 범위가 빠르게 달라지고 있습니다.",
+  "주 전원이 꺼졌지만 예비 설비의 작동 여부는 확인되지 않았습니다.",
+  "구경하는 주민이 늘어 통제 구역이 좁아지고 있습니다.",
+  "연기와 소음 때문에 눈으로 확인하거나 말로 안내하기 어렵습니다.",
+  "첫 조치 뒤 새로운 냄새와 열이 감지되어 2차 위험이 의심됩니다.",
+  "대피로 주변에 장애물이 있어 이동 속도가 느려지고 있습니다.",
+  "지원 장비 도착이 늦어져 현재 인원으로 안전을 유지해야 합니다.",
+  "인접 건물에도 같은 설비가 있어 위험이 번질 가능성이 있습니다.",
+] as const;
+
+function contextualFallbackSafetyQuiz(
+  incidentId: IncidentId,
+  actionId: ActionId,
+  focus: SafetyQuizFocus,
+  condition: string,
+): SafetyQuizContent {
+  const incident = INCIDENTS[incidentId];
+  const action = ACTIONS[actionId];
+  switch (focus) {
+    case "first_response":
+      return quiz(
+        `${condition} ${incident.label}의 ${action.label}에 착수할 구조대가 먼저 할 일은 무엇일까요?`,
+        ["즉시 위험원 가까이 접근한다", "주변을 통제하고 인원과 위험 범위를 확인한다", "주민에게 장비 점검을 맡긴다"],
+        "b",
+        "현장 작업보다 주변 통제와 위험 범위 확인을 먼저 해야 구조대와 주민의 추가 사고를 막을 수 있습니다.",
+      );
+    case "hidden_hazard":
+      return quiz(
+        `${condition} ${incident.label} 대응에서 눈앞의 문제 외에 반드시 살필 것은 무엇일까요?`,
+        ["전원·가스·구조물 같은 2차 위험", "현장 간판의 색상", "구조 차량의 세차 상태"],
+        "a",
+        "재난 현장에서는 전원, 가스, 약해진 구조물처럼 바로 보이지 않는 2차 위험도 함께 확인해야 합니다.",
+      );
+    case "safe_sequence":
+      return quiz(
+        `${condition} ${action.label}을 안전하게 진행할 순서를 고르세요.`,
+        ["통제와 위험 확인 → 보호 준비 → 작업", "작업 → 주민 접근 → 위험 확인", "장비 생략 → 촬영 → 작업"],
+        "a",
+        "통제와 위험 확인을 먼저 하고 보호 준비가 끝난 뒤 작업해야 예상하지 못한 피해를 줄일 수 있습니다.",
+      );
+    case "protective_setup":
+      return quiz(
+        `${condition} ${incident.label} 임무의 보호 준비로 가장 적절한 것은 무엇일까요?`,
+        ["속도를 위해 보호 절차를 줄인다", "위험에 맞는 장비·안전거리·감시 인원을 확보한다", "주민을 가까이 불러 길을 묻는다"],
+        "b",
+        "현장 위험에 맞는 보호 장비와 안전거리, 상황을 계속 확인할 인원을 갖춘 뒤 임무를 시작해야 합니다.",
+      );
+    case "evacuation":
+      return quiz(
+        `${condition} 주민을 ${incident.label} 현장에서 이동시킬 때 안전한 기준은 무엇일까요?`,
+        ["위험원과 멀고 통제 가능한 경로", "현장을 가장 가까이 보는 경로", "짐을 다시 가지러 가기 쉬운 경로"],
+        "a",
+        "대피 동선은 위험원과 떨어져 있고 구조대가 통제할 수 있어야 하며 취약 주민을 함께 보호해야 합니다.",
+      );
+    case "communication":
+      return quiz(
+        `${condition} 본부가 ${action.label} 지원을 판단하려면 어떤 보고가 가장 필요할까요?`,
+        ["정확한 위치·현재 위험·필요 인원과 장비", "주변 상점의 메뉴", "구조대원의 개인 일정"],
+        "a",
+        "정확한 위치와 현재 위험, 필요한 인원과 장비를 함께 알려야 본부가 적절한 지원을 결정할 수 있습니다.",
+      );
+    case "post_check":
+      return quiz(
+        `${condition} ${action.label}을 마친 뒤 통제를 풀기 전에 확인할 것은 무엇일까요?`,
+        ["남은 위험과 재발 징후", "장비의 색상과 크기", "주민의 사진 촬영 여부"],
+        "a",
+        "조치 후에도 남은 위험과 재발 가능성이 있으므로 재확인 전에는 통제와 안전거리를 유지해야 합니다.",
+      );
+    case "priority":
+      return quiz(
+        `${condition} ${incident.label} 현장에 새 위험 신호가 나타나면 어떤 판단을 우선할까요?`,
+        ["기존 계획을 무조건 계속한다", "작업을 멈추고 거리를 둔 뒤 위험을 재평가한다", "주민에게 먼저 확인시킨다"],
+        "b",
+        "새 위험이 생기면 작업을 멈추고 안전거리를 확보한 뒤 본부와 상황을 다시 평가해야 합니다.",
+      );
+  }
+}
+
+function contextualFallbackSafetyQuizzes(
+  incidentId: IncidentId,
+  actionId: ActionId,
+  quizSequence: number,
+  variationSeed: number,
+): SafetyQuizContent[] {
+  const focusOffset = (quizSequence + variationSeed) % SAFETY_QUIZ_FOCUSES.length;
+  const conditionOffset = (quizSequence * 7 + variationSeed) % FALLBACK_FIELD_CONDITIONS.length;
+  const candidates: SafetyQuizContent[] = [];
+  for (let conditionIndex = 0; conditionIndex < FALLBACK_FIELD_CONDITIONS.length; conditionIndex += 1) {
+    for (let focusIndex = 0; focusIndex < SAFETY_QUIZ_FOCUSES.length; focusIndex += 1) {
+      const condition = FALLBACK_FIELD_CONDITIONS[(conditionOffset + conditionIndex) % FALLBACK_FIELD_CONDITIONS.length];
+      const candidateFocus = SAFETY_QUIZ_FOCUSES[(focusOffset + focusIndex) % SAFETY_QUIZ_FOCUSES.length];
+      candidates.push(contextualFallbackSafetyQuiz(incidentId, actionId, candidateFocus, condition));
+    }
+  }
+  return candidates;
+}
+
 export function getSafetyQuizFocus(quizSequence: number, variationSeed = 0): SafetyQuizFocus {
   const sequence = Math.max(1, Math.trunc(quizSequence));
   const seed = Math.max(0, Math.trunc(variationSeed));
@@ -442,17 +544,19 @@ type FallbackSafetyQuizOptions = {
 export function fallbackSafetyQuiz(incidentId: IncidentId, options: FallbackSafetyQuizOptions = {}): SafetyQuizResponse {
   const actionId = options.actionId ?? INCIDENTS[incidentId].allowedActions[0];
   const quizSequence = Math.max(1, Math.trunc(options.quizSequence ?? 1));
+  const variationSeed = Math.max(0, Math.trunc(options.variationSeed ?? quizSequence * 7_919));
   const focus = options.questionFocus ?? getSafetyQuizFocus(quizSequence, options.variationSeed);
   const focusIndex = SAFETY_QUIZ_FOCUSES.indexOf(focus);
   const focusedCandidates = SAFETY_QUIZ_FOCUSES.map((_, offset) => SAFETY_QUIZ_FOCUSES[(focusIndex + offset) % SAFETY_QUIZ_FOCUSES.length])
     .map((candidateFocus) => focusedFallbackSafetyQuiz(incidentId, actionId, candidateFocus));
   const preferred = FALLBACK_SAFETY_QUIZZES_BY_ACTION[incidentId]?.[actionId];
-  const candidates = [...focusedCandidates, preferred, FALLBACK_SAFETY_QUIZZES[incidentId], ALTERNATE_FALLBACK_SAFETY_QUIZZES[incidentId]]
+  const contextualCandidates = contextualFallbackSafetyQuizzes(incidentId, actionId, quizSequence, variationSeed);
+  const candidates = [...focusedCandidates, preferred, FALLBACK_SAFETY_QUIZZES[incidentId], ALTERNATE_FALLBACK_SAFETY_QUIZZES[incidentId], ...contextualCandidates]
     .filter((candidate, index, all): candidate is SafetyQuizContent => Boolean(candidate) && all.indexOf(candidate) === index);
   const unused = candidates.find((candidate) => !isSafetyQuizQuestionExcluded(candidate.question, options.excludedQuestions ?? []));
   const selected = unused ?? {
-    ...candidates[0],
-    question: `${SAFETY_QUIZ_FOCUS_LABELS[focus]} ${quizSequence}번 변형 · ${candidates[0].question}`.slice(0, 120),
+    ...contextualCandidates[0],
+    question: `구조 훈련 ${quizSequence}단계 · ${SAFETY_QUIZ_FOCUS_LABELS[focus]} · ${contextualCandidates[0].question}`.slice(0, 120),
   };
   return { ...selected, source: "fallback", ...(options.degradedReason ? { degradedReason: options.degradedReason } : {}) };
 }

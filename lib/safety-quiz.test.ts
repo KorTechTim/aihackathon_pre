@@ -72,6 +72,21 @@ test("한 작전에서 가능한 모든 행동의 로컬 문제도 전부 서로
   assert.equal(new Set(history).size, actionCount);
 });
 
+test("AI 장애와 기존 문제 소진 뒤에도 로컬 퀴즈가 새 문제를 계속 제공한다", () => {
+  const history: string[] = [];
+  for (let sequence = 1; sequence <= 32; sequence += 1) {
+    const next = fallbackSafetyQuiz("electrical_short", {
+      actionId: "cut_power",
+      excludedQuestions: history,
+      quizSequence: sequence,
+      variationSeed: sequence * 7_919,
+    });
+    assert.equal(isSafetyQuizQuestionExcluded(next.question, history), false, `quiz ${sequence}`);
+    history.push(next.question);
+  }
+  assert.equal(new Set(history).size, history.length);
+});
+
 test("중복 보기 ID와 마크다운이 포함된 AI 응답은 거부한다", () => {
   const base = FALLBACK_SAFETY_QUIZZES.electrical_short;
   assert.equal(normalizeSafetyQuiz({ ...base, question: "**위험한 문제**" }), null);

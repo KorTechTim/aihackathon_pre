@@ -392,6 +392,7 @@ export default function Home() {
   useEffect(() => () => {
     dialogueAbortRef.current?.abort();
     quizAbortRef.current?.abort();
+    quizAbortRef.current = null;
     bombHintAbortRef.current?.abort();
     npcDialogueAbortRef.current?.abort();
     npcDialogueAbortRef.current = null;
@@ -405,6 +406,7 @@ export default function Home() {
   const startGame = useCallback(() => {
     dialogueAbortRef.current?.abort();
     quizAbortRef.current?.abort();
+    quizAbortRef.current = null;
     bombHintAbortRef.current?.abort();
     npcDialogueAbortRef.current?.abort();
     npcDialogueAbortRef.current = null;
@@ -535,7 +537,27 @@ export default function Home() {
     setActionPopupOpen(false);
     closeNpcSpeech();
     setSafetyQuiz({ quiz: localFallback, difficulty: quizRequest.difficulty, quizSequence, pendingAction: { incidentId, actionId }, loading: true, selectedOptionId: null, status: "answering" });
-    const timeout = window.setTimeout(() => controller.abort(), 5_200);
+    let settled = false;
+    const showQuiz = (quiz: SafetyQuizResponse) => {
+      if (settled || quizAbortRef.current !== controller) return;
+      settled = true;
+      quizAbortRef.current = null;
+      const latestExcludedQuestions = askedQuizQuestionsRef.current;
+      const uniqueQuiz = isSafetyQuizQuestionExcluded(quiz.question, latestExcludedQuestions)
+        ? fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions: latestExcludedQuestions, quizSequence, questionFocus: quizRequest.questionFocus, variationSeed })
+        : quiz;
+      askedQuizQuestionsRef.current = [...latestExcludedQuestions, uniqueQuiz.question].slice(-MAX_EXCLUDED_QUIZ_QUESTIONS);
+      try {
+        window.localStorage.setItem(QUIZ_HISTORY_STORAGE_KEY, JSON.stringify({ sequence: quizSequenceRef.current, questions: askedQuizQuestionsRef.current }));
+      } catch {}
+      setSafetyQuiz((current) => current?.pendingAction.incidentId === incidentId && current.pendingAction.actionId === actionId
+        ? { ...current, quiz: uniqueQuiz, loading: false }
+        : current);
+    };
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+      showQuiz(localFallback);
+    }, 5_200);
     void fetch("/api/quiz", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -547,21 +569,7 @@ export default function Home() {
       const normalized = normalizeSafetyQuiz(data);
       if (!normalized || isSafetyQuizQuestionExcluded(normalized.question, excludedQuestions) || data.source !== "openai" && data.source !== "fallback") return localFallback;
       return { ...normalized, source: data.source } as SafetyQuizResponse;
-    }).catch(() => localFallback).then((quiz) => {
-      if (quizAbortRef.current !== controller) return;
-      const latestExcludedQuestions = askedQuizQuestionsRef.current;
-      const uniqueQuiz = isSafetyQuizQuestionExcluded(quiz.question, latestExcludedQuestions)
-        ? fallbackSafetyQuiz(incidentId, { actionId, excludedQuestions: latestExcludedQuestions, quizSequence, questionFocus: quizRequest.questionFocus, variationSeed })
-        : quiz;
-      if (isSafetyQuizQuestionExcluded(uniqueQuiz.question, latestExcludedQuestions)) return;
-      askedQuizQuestionsRef.current = [...latestExcludedQuestions, uniqueQuiz.question].slice(-MAX_EXCLUDED_QUIZ_QUESTIONS);
-      try {
-        window.localStorage.setItem(QUIZ_HISTORY_STORAGE_KEY, JSON.stringify({ sequence: quizSequenceRef.current, questions: askedQuizQuestionsRef.current }));
-      } catch {}
-      setSafetyQuiz((current) => current?.pendingAction.incidentId === incidentId && current.pendingAction.actionId === actionId
-        ? { ...current, quiz: uniqueQuiz, loading: false }
-        : current);
-    }).finally(() => window.clearTimeout(timeout));
+    }).catch(() => localFallback).then(showQuiz).finally(() => window.clearTimeout(timeout));
   }, [closeNpcSpeech, playSound]);
 
   const handleRobotArrive = useCallback((mission: ActiveRobotMission) => {
@@ -796,6 +804,7 @@ export default function Home() {
     playSound("button");
     dialogueAbortRef.current?.abort();
     quizAbortRef.current?.abort();
+    quizAbortRef.current = null;
     npcDialogueAbortRef.current?.abort();
     npcDialogueAbortRef.current = null;
     if (npcSpeechTimerRef.current !== null) window.clearTimeout(npcSpeechTimerRef.current);
